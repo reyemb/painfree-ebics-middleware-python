@@ -929,6 +929,31 @@ basic_account = Table(
 #: An account is one person and five failures is a lot; a source address is an
 #: office, and locking everybody in it out because one of them mistyped is an
 #: outage this service caused.
+#: The operator's confirmation that they hold a copy of the custody secret.
+#:
+#: One row, or none. It exists because the most destructive thing a deployment
+#: can lose was named in exactly one place -- a block of stderr from a
+#: provisioning script, printed once, at the moment nothing is at stake yet --
+#: and because key generation is the point at which that stops being true.
+#:
+#: **No secret is here and none can be.** The process serving the console cannot
+#: read the custody secret; what it can read is which key id the sealed rows
+#: name, which is a hash and is safe to store. That is what `key_id` records: an
+#: acknowledgement made against one custody key does not carry over to the key a
+#: rotation replaces it with.
+custody_acknowledgement = Table(
+    "custody_acknowledgement",
+    metadata,
+    Column("seq", Sequence64, primary_key=True, autoincrement=True),
+    # The custody key the acknowledgement was made against, or NULL when it was
+    # made before any key existed -- which is the ordinary case, because the
+    # point is to confirm the backup *before* the first key is generated.
+    Column("key_id", String(32), nullable=True),
+    Column("acknowledged_at", UtcDateTime, nullable=False),
+    Column("acknowledged_by", String(255), nullable=False),
+)
+
+
 basic_lockout = Table(
     "basic_lockout",
     metadata,

@@ -297,6 +297,11 @@ class Authenticator:
         password was involved.
         """
         reach = self.grants.reach_for(account.subject)
+        # Deliberately *not* mapped through `admin_role_names`. That setting
+        # says what somebody else's directory calls an administrator; a local
+        # account's role is this service's own enum value, written by
+        # `create-admin`. A deployment that renames the directory group would
+        # otherwise demote every account it issued itself.
         return identity.build_principal(
             subject=account.subject, issuer=identity.LOCAL_ISSUER,
             method=method, roles=(account.role.value,),
@@ -338,6 +343,7 @@ class Authenticator:
             subject=session.subject, issuer=session.issuer,
             method=identity.SESSION, roles=session.roles,
             grants=reach.grants, oversight=reach.oversight,
+            admin_names=self.settings.admin_role_names,
             expires_at=session.expires_at, display_name=session.display_name)
 
     def from_development(self, request: Request) -> Principal:
@@ -365,7 +371,8 @@ class Authenticator:
         return identity.build_principal(
             subject=subject, issuer="painfree-development",
             method=identity.DEVELOPMENT, roles=roles,
-            grants=reach.grants, oversight=reach.oversight)
+            grants=reach.grants, oversight=reach.oversight,
+            admin_names=self.settings.admin_role_names)
 
     def principal_from_claims(self, claims: dict[str, Any], *,
                               method: str) -> Principal:
@@ -376,7 +383,7 @@ class Authenticator:
         raw_scopes = identity.claim_at(claims, settings.oidc_scope_claim)
         requested = (identity.string_list(raw_scopes)
                      if raw_scopes is not None else None)
-        unknown = identity.unknown_roles(roles)
+        unknown = identity.unknown_roles(roles, settings.known_role_names)
         if unknown:
             log.warning("auth.unmapped_roles", roles=list(unknown),
                         subject=claims.get("sub"),
@@ -392,6 +399,7 @@ class Authenticator:
             grants=reach.grants,
             oversight=reach.oversight,
             requested=requested,
+            admin_names=self.settings.admin_role_names,
             token_id=claims.get("jti"),
             expires_at=tokens.expiry_of(claims),
             display_name=claims.get("name") or claims.get("preferred_username"),

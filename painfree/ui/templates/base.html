@@ -259,6 +259,16 @@
   {% endif %}
 
   <main id="page">
+    {# Shown on every page until somebody says a copy of the custody secret
+       exists, because the alternative is saying it once, at provisioning, to
+       an operator who may not be the one still here. #}
+    {% if custody_unacknowledged %}
+      <div class="card warn">
+        <strong>{{ t('recovery.banner_title') }}</strong>
+        <p>{{ t('recovery.banner_body') }}
+           <a href="/ui/recovery">{{ t('recovery.banner_link') }}</a></p>
+      </div>
+    {% endif %}
 {% block body %}{% endblock %}
   </main>
 </div>

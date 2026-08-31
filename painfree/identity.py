@@ -72,7 +72,7 @@ from __future__ import annotations
 import datetime as _dt
 import enum
 from dataclasses import dataclass
-from typing import Any, Iterable, Mapping
+from typing import Any, Collection, Iterable, Mapping
 
 from painfree.audit import Actor
 
@@ -296,7 +296,8 @@ ROLE_SCOPES: Mapping[Role, frozenset[Scope]] = {
 }
 
 
-def role_for(roles: Iterable[str]) -> Role:
+def role_for(roles: Iterable[str],
+             admin_names: Collection[str] = ADMIN_ROLE_NAMES) -> Role:
     """Which of the two roles these claim values make a caller.
 
     Any recognised administrator name wins; everything else, including a claim
@@ -304,9 +305,13 @@ def role_for(roles: Iterable[str]) -> Role:
     member. That is not a default privilege -- a member holds nothing until it
     is granted a connection -- so the failure mode of an unmapped role is an
     empty console rather than an unearned one.
+
+    ``admin_names`` is what this deployment's directory calls an administrator.
+    A directory that will not be reshaped to suit one service is the ordinary
+    case, so it is configuration; the default is the pair this service has
+    always accepted, and a deployment that sets nothing keeps working.
     """
-    return Role.admin if any(name in ADMIN_ROLE_NAMES
-                             for name in roles) else Role.member
+    return Role.admin if any(name in admin_names for name in roles) else Role.member
 
 
 #: How a caller proved who they are. Recorded on every audit row, because
@@ -485,7 +490,8 @@ def build_principal(*, subject: str, issuer: str, method: str,
                     requested: Iterable[str] | None = None,
                     token_id: str | None = None,
                     expires_at: _dt.datetime | None = None,
-                    display_name: str | None = None) -> Principal:
+                    display_name: str | None = None,
+                    admin_names: Collection[str] = ADMIN_ROLE_NAMES) -> Principal:
     """The one place a :class:`Principal` is assembled.
 
     One function rather than three constructions in :mod:`painfree.authn`,
@@ -500,7 +506,7 @@ def build_principal(*, subject: str, issuer: str, method: str,
     reviewer who can read payments and not statements.
     """
     names = tuple(roles)
-    role = role_for(names)
+    role = role_for(names, admin_names)
     held = sorted(set(grants), key=lambda pair: pair[0])
     if role is Role.admin:
         granted = ADMIN_SCOPES
@@ -525,7 +531,8 @@ def build_principal(*, subject: str, issuer: str, method: str,
                      display_name=display_name)
 
 
-def scopes_for(roles: Iterable[str]) -> frozenset[Scope]:
+def scopes_for(roles: Iterable[str],
+               admin_names: Collection[str] = ADMIN_ROLE_NAMES) -> frozenset[Scope]:
     """The **global** scopes these role names grant: everything, or nothing.
 
     An administrator name grants the whole model everywhere. Anything else
@@ -533,10 +540,11 @@ def scopes_for(roles: Iterable[str]) -> frozenset[Scope]:
     member holds comes from its grants, one connection at a time, and is in
     :meth:`Principal.scopes_on`.
     """
-    return ROLE_SCOPES[role_for(roles)]
+    return ROLE_SCOPES[role_for(roles, admin_names)]
 
 
-def unknown_roles(roles: Iterable[str]) -> tuple[str, ...]:
+def unknown_roles(roles: Iterable[str],
+                  known: Collection[str] | None = None) -> tuple[str, ...]:
     """Role names this service has no mapping for. Logged, so a misconfigured
     provider is visible in the stream rather than as a mysterious empty console.
 
@@ -545,7 +553,8 @@ def unknown_roles(roles: Iterable[str]) -> tuple[str, ...]:
     what turns "the console is empty" into "the directory group is not the one
     this deployment calls admin".
     """
-    return tuple(name for name in roles if name not in KNOWN_ROLE_NAMES)
+    recognised = KNOWN_ROLE_NAMES if known is None else known
+    return tuple(name for name in roles if name not in recognised)
 
 
 def effective_scopes(roles: Iterable[str],

@@ -154,6 +154,7 @@ defined, in `painfree/config.py`.
 | `PAINFREE_AUTH_MODE` | derived | `oidc`, `basic`, or `development`, which production refuses |
 | `PAINFREE_TLS_TERMINATED_UPSTREAM` | `false` | `basic` in production will not start without it |
 | `PAINFREE_OIDC_ISSUER` / `_CLIENT_ID` / `_REDIRECT_URI` | none | all three required for `oidc` |
+| `PAINFREE_OIDC_ADMIN_ROLE` / `_MEMBER_ROLE` | `admin,administrator` / `member,operator,viewer,auditor` | what your directory calls these, comma-separated; both resolved values appear in the startup line |
 
 Logs are one JSON object per line on stdout. No token, authorization code,
 session id or client secret ever reaches the stream.

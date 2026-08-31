@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}{{ t('recovery.title') }} — painfree{% endblock %}
+{% block body %}
+<h1>{{ t('recovery.heading') }}</h1>
+<p class="lede">{{ t('recovery.lede') }}</p>
+
+{# Nothing on this page is a secret. The key id is a hash: it says which secret
+   is the right one and is no part of it, which is why an unprivileged page may
+   show it and why the file it names is downloadable. #}
+<div class="card warn">
+  <strong>{{ t('recovery.what_title') }}</strong>
+  <p>{{ t('recovery.what_body') }}</p>
+</div>
+
+<table class="rows">
+  <tr><th>{{ t('recovery.key_id') }}</th>
+      <td>{% if card.rotation_unfinished %}<code>{{ card.key_ids | join(', ') }}</code>
+          <span class="hint">{{ t('recovery.rotation_unfinished') }}</span>
+          {% elif card.key_id %}<code>{{ card.key_id }}</code>
+          {% else %}{{ t('recovery.no_keys_yet') }}{% endif %}</td></tr>
+  <tr><th>{{ t('recovery.file') }}</th><td><code>{{ card.secret_path }}</code></td></tr>
+  <tr><th>{{ t('recovery.command') }}</th><td><code>{{ card.backup_command }}</code></td></tr>
+  <tr><th>{{ t('recovery.version') }}</th>
+      <td><code>{{ card.version }}</code> <span class="hint">{{ card.git_sha }}</span></td></tr>
+  <tr><th>{{ t('recovery.acknowledged') }}</th>
+      <td>{% if card.acknowledged %}{{ card.acknowledgement.acknowledged_at.strftime('%Y-%m-%d %H:%M') }}
+            <span class="hint">{{ card.acknowledgement.acknowledged_by }}</span>
+          {% else %}<strong>{{ t('recovery.not_acknowledged') }}</strong>{% endif %}</td></tr>
+</table>
+
+<p><a href="/ui/recovery/card.txt">{{ t('recovery.download') }}</a></p>
+
+{% if not card.acknowledged and may('connections:write') %}
+  <form class="stack card" method="post" action="/ui/recovery/acknowledge">
+    <p>{{ t('recovery.confirm_body') }}</p>
+    <div class="actions"><button type="submit">{{ t('recovery.confirm') }}</button></div>
+  </form>
+{% endif %}
+{% endblock %}

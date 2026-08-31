@@ -79,7 +79,7 @@ def test_a_migrated_deployment_has_no_account_at_all(sqlite_url):
     """
     settings = _basic_settings(sqlite_url)
     engine = db.build_engine(settings)
-    assert db.migrate(engine) == "0015_payment_schemes"
+    assert db.migrate(engine) == "0016_custody_acknowledgement"
     from sqlalchemy import select
 
     with engine.connect() as connection:
@@ -484,3 +484,27 @@ def test_the_console_manages_accounts_and_lockouts(world):
     assert client.get("/auth/me", headers=root()).status_code == 200
 
 
+
+
+def test_a_local_administrator_survives_renaming_the_directory_group(sqlite_url):
+    """The exception, and the one that would have hurt.
+
+    `PAINFREE_OIDC_ADMIN_ROLE` says what somebody *else's* directory calls an
+    administrator. A local account's role is this service's own value, written
+    by `create-admin`, so pointing that setting at a directory group must not
+    demote every account this deployment issued itself.
+    """
+    settings = basic_world.settings_for(sqlite_url,
+                                        oidc_admin_role="painfree-admins")
+    engine = db.build_engine(settings)
+    db.migrate(engine)
+    app = create_app(settings)
+    with TestClient(app) as client:
+        _accounts(app).create(ROOT, "a-long-enough-password", role=Role.admin,
+                              actor=Actor(type="cli", id="tests"))
+        me = client.get("/auth/me", headers=basic_world.basic(
+            ROOT, "a-long-enough-password"))
+
+    assert me.status_code == 200, me.text
+    assert me.json()["role"] == "admin"
+    engine.dispose()

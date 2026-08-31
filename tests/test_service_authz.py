@@ -744,3 +744,50 @@ def test_expired_logins_are_purged(postgres_engine):
     store.begin()
     assert store.purge(before=datetime.datetime.now(datetime.timezone.utc)
                        + datetime.timedelta(hours=1)) == 2
+
+
+# --- what this deployment calls an administrator ------------------------------
+#
+# A directory is not reshaped to suit one service, so the two names this service
+# used to insist on are configuration now. The tests that matter are the ones
+# about what does *not* change: the defaults, and the local accounts.
+
+def test_the_default_names_are_the_ones_this_service_always_accepted(settings):
+    """Nothing breaks on upgrade, which is the whole constraint."""
+    assert settings.admin_role_names == {"admin", "administrator"}
+    assert settings.member_role_names == {"member", "operator", "viewer", "auditor"}
+
+
+def test_a_configured_group_makes_an_administrator(settings):
+    """The point: `painfree-admins` in a directory, not a word we chose."""
+    configured = settings.model_copy(
+        update={"oidc_admin_role": "painfree-admins, CN=Treasury Ops"})
+
+    assert identity.role_for(["painfree-admins"],
+                             configured.admin_role_names) is identity.Role.admin
+    assert identity.role_for(["CN=Treasury Ops"],
+                             configured.admin_role_names) is identity.Role.admin
+    # And the names it replaced stop conferring anything, which is the reason
+    # to configure it at all.
+    assert identity.role_for(["admin"],
+                             configured.admin_role_names) is identity.Role.member
+
+
+def test_an_unmapped_name_is_still_a_member_and_still_reported(settings):
+    """An unmapped role grants nothing and says so, rather than failing closed."""
+    configured = settings.model_copy(update={"oidc_admin_role": "painfree-admins"})
+
+    assert identity.role_for(["whatever"],
+                             configured.admin_role_names) is identity.Role.member
+    assert identity.unknown_roles(["whatever"],
+                                  configured.known_role_names) == ("whatever",)
+    # A configured member name is recognised, so it is not logged as noise.
+    assert identity.unknown_roles(["viewer"], configured.known_role_names) == ()
+
+
+def test_the_names_are_parsed_forgivingly(settings):
+    """Somebody will type a trailing comma and a space, and should be right."""
+    configured = settings.model_copy(
+        update={"oidc_admin_role": " admins , ,ops,"})
+
+    assert configured.admin_role_names == {"admins", "ops"}

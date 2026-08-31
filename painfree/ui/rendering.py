@@ -254,6 +254,12 @@ def render(request: Request, template: str, status_code: int = 200,
     """
     principal: Principal | None = getattr(request.state, "principal", None)
     alerts = notifications.alerts(request, principal)
+    # On every page for the same reason the bell is: a warning about the one
+    # unrecoverable thing in this system, shown only where somebody remembered
+    # to wire it in, is a warning the person who inherited the deployment never
+    # sees. It reads a key id and a timestamp, and no secret.
+    recovery = getattr(request.app.state, "recovery", None)
+    unacknowledged = bool(recovery is not None and not recovery.latest())
     locale, chosen = i18n.resolve(request)
     translator, formats = i18n.for_locale(locale)
     body = _env.get_template(template).render(
@@ -269,6 +275,7 @@ def render(request: Request, template: str, status_code: int = 200,
         locale=locale,
         language_name=i18n.NATIVE_NAMES[locale],
         language_links=i18n.switch_links(request),
+        custody_unacknowledged=unacknowledged,
         **values,
     )
     response = HTMLResponse(body, status_code=status_code)

@@ -626,7 +626,7 @@ def test_the_migration_promotes_nobody(sqlite_url):
     from painfree.config import load_settings
 
     engine = db.build_engine(load_settings(database_url=sqlite_url))
-    assert db.migrate(engine) == "0015_payment_schemes"
+    assert db.migrate(engine) == "0016_custody_acknowledgement"
     with engine.connect() as connection:
         assert connection.execute(select(oversight_grant)).all() == []
     engine.dispose()

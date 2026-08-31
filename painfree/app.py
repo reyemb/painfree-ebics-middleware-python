@@ -99,6 +99,7 @@ from painfree.db import build_engine, check_ready, migrate
 from painfree.errors import ServiceError, error_body
 from painfree.identity import Scope
 from painfree.keyjobs import KeyJobStore
+from painfree.recovery import CustodyRecovery
 from painfree.keyring import Keyring
 from painfree.logging import bind, configure_logging, context, get_logger
 from painfree.orders import OrderStore
@@ -128,6 +129,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         "service.starting",
         version=settings.version,
         git_sha=settings.git_sha,
+        # Resolved, not raw: what this deployment calls an administrator is a
+        # question an operator should be able to answer from the log rather than
+        # by reading source and guessing which default is in force.
+        admin_roles=sorted(settings.admin_role_names),
+        member_roles=sorted(settings.member_role_names),
         config=app.state.resolved_config,
     )
 
@@ -150,6 +156,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # What the console asks the worker for. It appends rows and reads them back;
     # it holds no key and performs no key operation.
     app.state.key_jobs = KeyJobStore(engine, app.state.audit)
+    # Reads which custody key the sealed rows name and whether anybody has
+    # said they hold a copy of it. Holds no secret and cannot: this process
+    # is refused the custody secret and would not have started with one.
+    app.state.recovery = CustodyRecovery(engine, app.state.audit)
     # Webhook subscriptions, with **no custody key**. This surface can register
     # an endpoint, seal its secret to the worker's published public half and
     # show it to the registering caller once -- and cannot open a stored one,

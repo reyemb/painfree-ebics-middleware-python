@@ -38,8 +38,9 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import PlainTextResponse, RedirectResponse
 
+import painfree
 from painfree import access, ebics3, reconcile, webhooks
 from painfree.api import record_webhook_change
 from painfree.authn import requires, requires_on
@@ -339,6 +340,16 @@ def request_key_job(
 
     with bind(connection_id=connection_id):
         row = _registry(request).get(connection_id)
+        # The one irreversible action here whose cost is somebody else's
+        # calendar: keys generated now are sealed under a secret that, if no
+        # copy of it exists, takes a paper re-registration to recover from.
+        # Refused rather than warned about, and only for the first generation
+        # -- a connection already initialised is not made safer by stopping it.
+        if wanted is KeyAction.create_keys and not _card(request).acknowledged:
+            raise ConflictError(
+                "this deployment has not confirmed that a copy of the custody "
+                "secret exists; every key generated here is sealed under it and "
+                f"nothing recovers it. See {PREFIX}/recovery.")
         params = _job_params(wanted, form)
         job = _jobs(request).request(connection_id, wanted,
                                      key_state=row.key_state, params=params,
@@ -373,6 +384,79 @@ def _job_params(action: KeyAction, form: dict[str, str]) -> dict[str, Any]:
                 "organisation": (form.get("organisation") or "").strip() or None,
                 "country": (form.get("country") or "").strip() or None}
     return {}
+
+
+def _card(request: Request):
+    """The recovery card, which names a key and never carries one."""
+    settings = request.app.state.settings
+    return request.app.state.recovery.card(version=painfree.__version__,
+                                           git_sha=settings.git_sha)
+
+
+@router.get("/recovery")
+def recovery(request: Request,
+             principal: Principal = Depends(requires())):
+    """What to hold a copy of, and which copy is the right one.
+
+    Unprivileged, like `/ui/api`: it discloses no secret and no connection, and
+    the person who most needs to read it is whoever inherited a deployment
+    somebody else stood up. The key id is a hash and identifies *which* secret
+    without being any part of it.
+    """
+    return render(request, "recovery.html", card=_card(request))
+
+
+@router.get("/recovery/card.txt")
+def recovery_card(request: Request,
+                  principal: Principal = Depends(requires())):
+    """The same card as a file, because the point is to keep it off this host.
+
+    Plain text: it is meant to be printed, or pasted beside the archive in a
+    password manager. It carries the key id, never the key.
+    """
+    card = _card(request)
+    made = card.acknowledgement
+    lines = [
+        "painfree recovery card",
+        "",
+        f"version           {card.version}",
+        f"git sha           {card.git_sha}",
+        f"custody key id    {card.key_id or 'none yet -- no keys are sealed'}",
+        f"acknowledged      {made.acknowledged_at.isoformat() if made else 'no'}"
+        + (f" by {made.acknowledged_by}" if made else ""),
+        "",
+        "The custody secret seals every stored EBICS private key. It is one file",
+        f"on the host, {card.secret_path}, it is in no database backup, and",
+        "nothing recovers it. Losing it costs new keys, an INI letter signed on",
+        "paper and posted, and days per bank before payments resume.",
+        "",
+        f"Take a copy off this host:  {card.backup_command}",
+        "Then encrypt the archive: it holds the secret and the data it opens.",
+        "",
+        "The key id above says which secret is the right one. It is a hash and",
+        "is safe to keep beside the archive; it is not the secret and cannot be",
+        "used to open anything.",
+    ]
+    return PlainTextResponse(
+        "\n".join(lines) + "\n",
+        headers={"Content-Disposition":
+                 'attachment; filename="painfree-recovery-card.txt"'})
+
+
+@router.post("/recovery/acknowledge")
+def acknowledge_recovery(
+    request: Request,
+    principal: Principal = Depends(requires(Scope.connections_write)),
+):
+    """Record that a copy of the custody secret exists somewhere else.
+
+    An `admin` act, and the same scope that registers a connection: it is a
+    statement about the deployment rather than about any one bank. Nobody is
+    asked to paste the secret in to prove it, because a console that could
+    check would be a console that could read it.
+    """
+    request.app.state.recovery.acknowledge(actor=principal.actor())
+    return _see(f"{PREFIX}/recovery?acknowledged=1")
 
 
 @router.get("/connections/{connection_id}/letter")

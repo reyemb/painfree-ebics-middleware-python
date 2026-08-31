@@ -319,6 +319,35 @@ class Settings(BaseSettings):
     dev_subject: str = "developer"
     """Who ``development`` mode authenticates as when no header names someone."""
 
+    oidc_admin_role: str = "admin,administrator"
+    """Claim values this deployment's directory uses for an administrator.
+
+    Comma-separated, because a group is named by the directory and the directory
+    is not reshaped to suit one service: `painfree-admins`, `CN=Treasury Ops`,
+    whatever is already there. The default is the pair this service has always
+    accepted, so a deployment that sets nothing keeps every administrator it had
+    across an upgrade.
+
+    What it decides is exactly one thing -- whether a caller is an `admin` --
+    and everything else a member may touch is a grant, one connection at a time.
+    The resolved value is in the `service.starting` line, so an operator reads
+    back what this deployment calls an administrator rather than inferring it.
+    """
+
+    oidc_member_role: str = "member,operator,viewer,auditor"
+    """Claim values that are recognised and grant nothing on their own.
+
+    Comma-separated, and the four-role model's names are the default for the
+    reason they were kept in the first place: so they are not logged as unmapped
+    noise on every request. `auditor` is here and not in the administrator list
+    deliberately -- deployment-wide read is an oversight grant issued per person,
+    never a word a directory happens to still send.
+
+    A name in neither list still authenticates and still holds nothing. The
+    warning it produces is the point: an empty console becomes "the group is not
+    the one this deployment calls admin" rather than a mystery.
+    """
+
     dev_roles: str = "admin"
     """The roles ``development`` mode grants by default, comma-separated.
 
@@ -327,6 +356,24 @@ class Settings(BaseSettings):
     so a development environment pinned to the old word keeps working; the
     default is the new one because it is what a reader of this file should
     copy."""
+
+    @property
+    def admin_role_names(self) -> frozenset[str]:
+        """`oidc_admin_role`, parsed. Empty entries dropped, order irrelevant."""
+        return frozenset(name.strip() for name in self.oidc_admin_role.split(",")
+                         if name.strip())
+
+    @property
+    def member_role_names(self) -> frozenset[str]:
+        """`oidc_member_role`, parsed."""
+        return frozenset(name.strip() for name in self.oidc_member_role.split(",")
+                         if name.strip())
+
+    @property
+    def known_role_names(self) -> frozenset[str]:
+        """Every name this deployment recognises, mapped or merely expected."""
+        return self.admin_role_names | self.member_role_names
+
 
     log_level: str = "INFO"
 

@@ -691,7 +691,7 @@ def test_the_migration_gives_every_old_role_a_defined_landing_place(
         before_the_migration):
     """Nobody silently gains, and only the one that cannot be mapped loses."""
     engine = before_the_migration
-    assert db.migrate(engine) == "0015_payment_schemes"
+    assert db.migrate(engine) == "0016_custody_acknowledgement"
     with engine.connect() as connection:
         grants = {}
         for row in connection.execute(select(connection_grant)).mappings():
@@ -785,7 +785,7 @@ def test_a_deployment_with_no_connections_migrates_to_nothing(sqlite_url):
     from painfree.config import load_settings
 
     engine = db.build_engine(load_settings(database_url=sqlite_url))
-    assert db.migrate(engine) == "0015_payment_schemes"
+    assert db.migrate(engine) == "0016_custody_acknowledgement"
     with engine.connect() as connection:
         assert connection.execute(select(connection_grant)).all() == []
     engine.dispose()
