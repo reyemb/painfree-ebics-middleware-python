@@ -59,6 +59,7 @@ from markupsafe import Markup
 
 from painfree import ebics3
 from painfree.authn import principal_of
+from painfree.config import AuthMode
 from painfree.identity import Principal, Scope
 from painfree.logging import context
 from painfree.ui import i18n, notifications
@@ -260,6 +261,15 @@ def render(request: Request, template: str, status_code: int = 200,
     # sees. It reads a key id and a timestamp, and no secret.
     recovery = getattr(request.app.state, "recovery", None)
     unacknowledged = bool(recovery is not None and not recovery.latest())
+    # Whether local accounts are this deployment's business at all. Under an
+    # identity provider they are the provider's, so the entry goes -- unless
+    # some already exist, which means a deployment moved onto a provider and
+    # has leftovers only this screen can clear.
+    settings = getattr(request.app.state, "settings", None)
+    store = getattr(request.app.state, "accounts", None)
+    local_accounts = (settings is not None
+                      and (settings.auth_mode is not AuthMode.oidc
+                           or bool(store is not None and store.all())))
     locale, chosen = i18n.resolve(request)
     translator, formats = i18n.for_locale(locale)
     body = _env.get_template(template).render(
@@ -276,6 +286,7 @@ def render(request: Request, template: str, status_code: int = 200,
         language_name=i18n.NATIVE_NAMES[locale],
         language_links=i18n.switch_links(request),
         custody_unacknowledged=unacknowledged,
+        local_accounts=local_accounts,
         **values,
     )
     response = HTMLResponse(body, status_code=status_code)

@@ -40,6 +40,8 @@
   "accounts.other_mode": "Ta instalacja uwierzytelnia przez dostawcę tożsamości, więc te konta nikogo nie logują. Przygotuj je tutaj przed przełączeniem albo usuń je później.",
   "accounts.password_hint": "Co najmniej 12 znaków. Jest przechowywane w postaci skrótu i nie da się go odczytać ani tutaj, ani nigdzie indziej.",
   "accounts.password_set": "Hasło ustawione",
+  "accounts.provider_owns_these": "Kontami zarządza twój dostawca tożsamości",
+  "accounts.provider_owns_these_body": "To wdrożenie uwierzytelnia się u dostawcy: konto utworzone tutaj zostałoby zapisane, a przy logowaniu odrzucone, ponieważ hasło jest akceptowane tylko wtedy, gdy dostawcy nie ma. Istniejące konta pozostają na liście powyżej, aby można je było usunąć. Przygotowując odejście od dostawcy, użyj python -m painfree create-admin, które działa w każdym trybie.",
   "accounts.resume": "Przywróć",
   "accounts.scope_source": "Adres źródłowy",
   "accounts.scope_subject": "Nazwa konta",

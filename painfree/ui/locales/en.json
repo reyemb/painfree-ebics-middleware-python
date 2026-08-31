@@ -40,6 +40,8 @@
   "accounts.other_mode": "This deployment authenticates against an identity provider, so these accounts sign nobody in. Prepare them here before you switch, or remove them after.",
   "accounts.password_hint": "At least 12 characters. It is stored hashed and cannot be read back, here or anywhere else.",
   "accounts.password_set": "Password set",
+  "accounts.provider_owns_these": "Accounts are managed in your identity provider",
+  "accounts.provider_owns_these_body": "This deployment authenticates against a provider, so an account made here would be stored and then refused at sign-in: a password is only accepted when there is no provider. Existing accounts stay listed above so they can be removed. To prepare for moving off the provider, run python -m painfree create-admin, which works in every mode.",
   "accounts.resume": "Resume",
   "accounts.scope_source": "Source address",
   "accounts.scope_subject": "Account name",

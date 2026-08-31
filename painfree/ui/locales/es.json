@@ -40,6 +40,8 @@
   "accounts.other_mode": "Esta instalación autentica contra un proveedor de identidad, así que estas cuentas no dan acceso a nadie. Prepáralas aquí antes del cambio, o elimínalas después.",
   "accounts.password_hint": "Al menos 12 caracteres. Se guarda con hash y no puede volver a leerse, ni aquí ni en ningún otro sitio.",
   "accounts.password_set": "Contraseña fijada",
+  "accounts.provider_owns_these": "Las cuentas se gestionan en su proveedor de identidad",
+  "accounts.provider_owns_these_body": "Este despliegue se autentica contra un proveedor: una cuenta creada aquí se guardaría y luego se rechazaría al iniciar sesión, porque solo se acepta una contraseña cuando no hay proveedor. Las cuentas existentes siguen listadas arriba para poder eliminarlas. Para preparar la salida del proveedor, use python -m painfree create-admin, que funciona en cualquier modo.",
   "accounts.resume": "Reactivar",
   "accounts.scope_source": "Dirección de origen",
   "accounts.scope_subject": "Nombre de cuenta",

@@ -12,11 +12,18 @@ dependency that guards granting, for the same reason: creating an administrator
 account *is* granting administration, one step removed, so a scope that could do
 it is a scope a grant could carry and a member could grant themselves.
 
-**It is shown in every mode and it authenticates in one.** A deployment
-preparing to move off its identity provider needs to create the accounts before
-it switches, and one moving the other way needs to see what is still there. What
-decides whether a password is accepted is ``PAINFREE_AUTH_MODE``; the page says
-which mode this process is in rather than hiding itself.
+**Under an identity provider it gets out of the way.** Where a provider is
+configured, accounts are that provider's to manage, and a console offering a
+second place to make them offers a credential this process would refuse: a
+password is only accepted in ``basic`` mode. So the navigation entry is hidden
+and creating an account is refused, both with one exception -- accounts that
+already exist stay listed and stay removable, because a deployment that moved
+*onto* a provider has leftovers to clear and hiding them would be hiding the
+only screen that can.
+
+The other direction, preparing accounts before moving *off* a provider, is the
+CLI's: ``python -m painfree create-admin`` works in every mode and is already
+the only way the first account is ever made.
 
 **Nothing on this page can read a password back.** The table is built from
 :class:`painfree.accounts.Account`, which has no field for one, and the two
@@ -30,6 +37,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
 
 from painfree.accounts import MINIMUM_PASSWORD_LENGTH, Accounts
+from painfree.config import AuthMode
 from painfree.access_api import _administrator
 from painfree.errors import ConflictError, NotFoundError
 from painfree.identity import Principal, Role
@@ -79,6 +87,16 @@ def create_account(request: Request,
     a mis-named field, which is the same problem a silently defaulted grant
     level would be, and has the same answer.
     """
+    if request.app.state.settings.auth_mode is AuthMode.oidc:
+        # The account would be real, stored, and unable to sign in: this
+        # process accepts one kind of credential and this is not it. Refused
+        # rather than created, because a credential that authenticates nobody
+        # is worse than no credential -- somebody is holding it and waiting.
+        raise ConflictError(
+            "this deployment authenticates against an identity provider, so "
+            "accounts are made there; one made here could not sign in. To "
+            "prepare for moving off the provider, use `python -m painfree "
+            "create-admin`, which works in every mode.")
     _accounts(request).create(
         (form.get("subject") or "").strip(),
         form.get("password") or "",

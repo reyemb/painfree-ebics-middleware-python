@@ -40,6 +40,8 @@
   "accounts.other_mode": "Questa installazione autentica tramite un provider di identità, quindi questi account non fanno accedere nessuno. Preparali qui prima del passaggio, o rimuovili dopo.",
   "accounts.password_hint": "Almeno 12 caratteri. È memorizzata con hash e non può essere riletta, né qui né altrove.",
   "accounts.password_set": "Password impostata",
+  "accounts.provider_owns_these": "Gli account si gestiscono nel tuo provider di identità",
+  "accounts.provider_owns_these_body": "Questa installazione si autentica presso un provider: un account creato qui verrebbe salvato e poi rifiutato all'accesso, perché una password è accettata solo in assenza di provider. Gli account esistenti restano elencati sopra per poter essere rimossi. Per prepararsi a lasciare il provider, usa python -m painfree create-admin, che funziona in ogni modalità.",
   "accounts.resume": "Riattiva",
   "accounts.scope_source": "Indirizzo di origine",
   "accounts.scope_subject": "Nome account",

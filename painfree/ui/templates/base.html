@@ -230,11 +230,14 @@
       {% if principal and principal.admin %}
       {{ item('/ui/access', t('nav.access'), icons.access(),
               request.url.path.startswith('/ui/access')) }}
-      {# Who may sign in at all. Shown in every mode, because a deployment
-         moving on or off an identity provider has accounts to prepare or to
-         clear out; the page itself says which mode is authenticating. #}
+      {# Who may sign in at all, where that is this deployment's business.
+         Under an identity provider it is the provider's, so this is hidden --
+         unless accounts already exist, which means somebody moved onto a
+         provider and has leftovers that only this screen can clear. #}
+      {% if local_accounts %}
       {{ item('/ui/accounts', t('nav.accounts'), icons.access(),
               request.url.path.startswith('/ui/accounts')) }}
+      {% endif %}
       {% endif %}
       {% if may('audit:read') %}
       {{ item('/ui/audit', t('nav.audit'), icons.audit(),

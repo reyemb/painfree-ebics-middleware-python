@@ -90,11 +90,12 @@ class DownloadWorker:
     """Claims due schedules and downloads them. Built once per process."""
 
     __slots__ = ("_engine", "_schedules", "_registry", "_keyring", "_custodian",
-                 "_statements", "_worker_id", "_timeout")
+                 "_statements", "_worker_id", "_timeout", "_user_agent")
 
     def __init__(self, engine: Engine, custody_key: CustodyKey, *,
                  audit: AuditLog | None = None, worker_id: str | None = None,
-                 timeout: float | None = None) -> None:
+                 timeout: float | None = None,
+                 user_agent: str | None = None) -> None:
         audit = audit or AuditLog(engine)
         self._engine = engine
         self._schedules = DownloadSchedules(engine, audit)
@@ -104,6 +105,7 @@ class DownloadWorker:
         self._statements = StatementStore(engine, audit)
         self._worker_id = worker_id or new_worker_id()
         self._timeout = timeout
+        self._user_agent = user_agent
 
     @property
     def worker_id(self) -> str:
@@ -334,8 +336,10 @@ class DownloadWorker:
 
     def _transport(self, connection: BankConnection) -> BankTransport:
         if self._timeout is None:
-            return BankTransport(connection.host_url)
-        return BankTransport(connection.host_url, timeout=self._timeout)
+            return BankTransport(connection.host_url,
+                                 user_agent=self._user_agent)
+        return BankTransport(connection.host_url, timeout=self._timeout,
+                             user_agent=self._user_agent)
 
 
 @dataclass(frozen=True, slots=True)
@@ -353,6 +357,7 @@ def build_downloader(settings: Settings, engine: Engine, **kwargs) -> DownloadWo
         raise ValueError(
             f"PAINFREE_ROLE is {settings.role.value}; this process does not "
             f"download and holds no custody key")
+    kwargs.setdefault("user_agent", settings.ebics_user_agent)
     return DownloadWorker(engine, settings.custody_key(), **kwargs)
 
 

@@ -71,6 +71,16 @@
 {% endif %}
 </div>
 
+{# Under a provider the form is gone rather than disabled: an account made here
+   would be stored, real, and refused at sign-in, because this process accepts
+   one kind of credential and this is not it. The CLI stays open for a
+   deployment preparing to move off the provider. #}
+{% if auth_mode == 'oidc' %}
+<div class="card warn">
+  <strong>{{ t('accounts.provider_owns_these') }}</strong>
+  <p>{{ t('accounts.provider_owns_these_body') }}</p>
+</div>
+{% else %}
 <div class="card">
 <h2>{{ t('accounts.add_heading') }}</h2>
 <form class="stack" method="post" action="/ui/accounts">
@@ -94,6 +104,7 @@
   <div class="actions"><button type="submit">{{ t('accounts.add') }}</button></div>
 </form>
 </div>
+{% endif %}
 
 <div class="card">
 <h2>{{ t('accounts.lockouts_heading') }}</h2>

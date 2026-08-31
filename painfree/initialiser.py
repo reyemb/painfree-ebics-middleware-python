@@ -52,11 +52,12 @@ class KeyWorker:
     """Claims key jobs and performs them. Built once per worker process."""
 
     __slots__ = ("_engine", "_queue", "_registry", "_keyring", "_custodian",
-                 "_worker_id", "_timeout")
+                 "_worker_id", "_timeout", "_user_agent")
 
     def __init__(self, engine: Engine, custody_key: CustodyKey, *,
                  audit: AuditLog | None = None, worker_id: str | None = None,
-                 timeout: float | None = None) -> None:
+                 timeout: float | None = None,
+                 user_agent: str | None = None) -> None:
         audit = audit or AuditLog(engine)
         self._engine = engine
         self._queue = KeyJobQueue(engine, audit)
@@ -68,6 +69,7 @@ class KeyWorker:
         self._custodian = KeyCustodian(engine, audit, custody_key)
         self._worker_id = worker_id or "keys"
         self._timeout = timeout
+        self._user_agent = user_agent
 
     @property
     def worker_id(self) -> str:
@@ -270,8 +272,11 @@ class KeyWorker:
         """
         request = initialisation.next_request()
         body = ebics3.serialize_request(request)
-        transport = (BankTransport(connection.host_url) if self._timeout is None
-                     else BankTransport(connection.host_url, timeout=self._timeout))
+        transport = (
+            BankTransport(connection.host_url, user_agent=self._user_agent)
+            if self._timeout is None else
+            BankTransport(connection.host_url, timeout=self._timeout,
+                          user_agent=self._user_agent))
         raw = transport.post(body)
         root = ebics3.parse_xml(raw)
         parsed = ebics3.parse_response(root)
@@ -307,6 +312,7 @@ def build_key_worker(settings: Settings, engine: Engine, **kwargs) -> KeyWorker:
         raise ValueError(
             f"PAINFREE_ROLE is {settings.role.value}; this process performs no "
             f"key operations and holds no custody key")
+    kwargs.setdefault("user_agent", settings.ebics_user_agent)
     return KeyWorker(engine, settings.custody_key(), **kwargs)
 
 

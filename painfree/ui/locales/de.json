@@ -40,6 +40,8 @@
   "accounts.other_mode": "Diese Installation authentifiziert über einen Identitätsanbieter, diese Konten melden also niemanden an. Legen Sie sie hier vor dem Wechsel an oder entfernen Sie sie danach.",
   "accounts.password_hint": "Mindestens 12 Zeichen. Es wird gehasht gespeichert und lässt sich weder hier noch anderswo wieder auslesen.",
   "accounts.password_set": "Passwort gesetzt",
+  "accounts.provider_owns_these": "Konten werden in Ihrem Identitätsprovider verwaltet",
+  "accounts.provider_owns_these_body": "Diese Installation authentifiziert gegen einen Provider. Ein hier angelegtes Konto würde gespeichert und bei der Anmeldung abgelehnt: Ein Passwort wird nur akzeptiert, wenn es keinen Provider gibt. Bestehende Konten bleiben oben aufgeführt, damit sie entfernt werden können. Zur Vorbereitung eines Wechsels weg vom Provider dient python -m painfree create-admin, das in jedem Modus funktioniert.",
   "accounts.resume": "Entsperren",
   "accounts.scope_source": "Quelladresse",
   "accounts.scope_subject": "Kontoname",

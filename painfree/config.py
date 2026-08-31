@@ -319,6 +319,22 @@ class Settings(BaseSettings):
     dev_subject: str = "developer"
     """Who ``development`` mode authenticates as when no header names someone."""
 
+    ebics_user_agent: str | None = None
+    """What to send as ``User-Agent`` when talking to a bank. Unset by default.
+
+    Unset means the header is **not sent at all**, which is what an EBICS server
+    expects and the only value that cannot be a reason to be refused. It is a
+    setting rather than a constant because of how the default was arrived at:
+    Python's `urllib` supplies ``Python-urllib/3.x`` unless told otherwise, and
+    at least one Swiss bank's web application firewall blocks that string --
+    St.Galler Kantonalbank answers it with an HTML error page and HTTP 400,
+    before the EBICS connector sees the request. The same endpoint answers a
+    request carrying no ``User-Agent`` normally.
+
+    Set it only if a bank asks for a particular string. An empty value and an
+    unset one both mean no header.
+    """
+
     oidc_admin_role: str = "admin,administrator"
     """Claim values this deployment's directory uses for an administrator.
 

@@ -40,6 +40,8 @@
   "accounts.other_mode": "Ce déploiement authentifie via un fournisseur d'identité, ces comptes ne connectent donc personne. Préparez-les ici avant de basculer, ou supprimez-les ensuite.",
   "accounts.password_hint": "Au moins 12 caractères. Il est stocké haché et ne peut être relu, ni ici ni ailleurs.",
   "accounts.password_set": "Mot de passe défini",
+  "accounts.provider_owns_these": "Les comptes se gèrent dans votre fournisseur d'identité",
+  "accounts.provider_owns_these_body": "Ce déploiement s'authentifie auprès d'un fournisseur : un compte créé ici serait enregistré puis refusé à la connexion, car un mot de passe n'est accepté qu'en l'absence de fournisseur. Les comptes existants restent listés ci-dessus afin de pouvoir être supprimés. Pour préparer un départ du fournisseur, utilisez python -m painfree create-admin, qui fonctionne dans tous les modes.",
   "accounts.resume": "Réactiver",
   "accounts.scope_source": "Adresse source",
   "accounts.scope_subject": "Nom de compte",

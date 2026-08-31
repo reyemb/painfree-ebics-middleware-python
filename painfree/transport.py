@@ -48,6 +48,22 @@ DEFAULT_TIMEOUT = 60.0
 #: misconfigured `HostURL` pointing at something else cannot exhaust memory.
 MAX_RESPONSE_BYTES = 64 * 1024 * 1024
 
+#: How much of a non-XML answer is quoted back in the error. Enough to see a
+#: title or a firewall's name, short enough that a page does not land in a log.
+EXCERPT_BYTES = 200
+
+#: An opener that adds **nothing** of its own.
+#:
+#: `urllib` otherwise sends ``User-Agent: Python-urllib/3.x``, and that string
+#: is on the blocklist of at least one Swiss bank's web application firewall:
+#: St.Galler Kantonalbank answers it with an HTML page, HTTP 400, before the
+#: EBICS connector sees the request at all. The same endpoint answers a request
+#: with **no** ``User-Agent`` normally. So the default is to send none: an EBICS
+#: server has no use for one, and the header can only be a reason to be refused.
+#: A deployment whose bank wants a particular string sets one.
+_OPENER = urllib.request.build_opener()
+_OPENER.addheaders = []
+
 
 class TransportError(Exception):
     """One HTTP exchange with the bank did not produce a response document.
@@ -70,18 +86,24 @@ class BankTransport:
 
     url: str
     timeout: float = DEFAULT_TIMEOUT
+    #: What to send as ``User-Agent``, or ``None`` to send none at all, which
+    #: is the default and what an EBICS server expects.
+    user_agent: str | None = None
 
     def post(self, document: bytes) -> bytes:
         """One exchange. Raises :class:`TransportError`; never retries."""
+        headers = {"Content-Type": CONTENT_TYPE,
+                   "Content-Length": str(len(document))}
+        if self.user_agent:
+            headers["User-Agent"] = self.user_agent
         request = urllib.request.Request(
-            self.url, data=document,
-            headers={"Content-Type": CONTENT_TYPE,
-                     "Content-Length": str(len(document))},
-            method="POST")
+            self.url, data=document, headers=headers, method="POST")
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+            with _OPENER.open(request, timeout=self.timeout) as response:
                 body = response.read(MAX_RESPONSE_BYTES + 1)
                 status = response.status
+                self._refuse_if_not_xml(body, status,
+                                        response.headers.get("content-type"))
         except urllib.error.HTTPError as exc:
             # An HTTP error status is still an answer, and some banks return a
             # well-formed EBICS error document with a 500. The body is read
@@ -92,6 +114,8 @@ class BankTransport:
                                      sent=True, status=exc.code) from exc
             log.warning("ebics.http_error_with_body", url=self.url,
                         status=exc.code, bytes=len(body))
+            self._refuse_if_not_xml(body, exc.code,
+                                    exc.headers.get("content-type"))
             return body
         except urllib.error.URLError as exc:
             # `URLError` with an underlying OS error is a connection that was
@@ -118,6 +142,43 @@ class BankTransport:
                                  sent=True, status=status)
         return body
 
+    def _refuse_if_not_xml(self, body: bytes, status: int,
+                           content_type: str | None) -> None:
+        """Refuse an answer that is not a document, before anything parses it.
 
-__all__ = ["CONTENT_TYPE", "DEFAULT_TIMEOUT", "MAX_RESPONSE_BYTES",
+        A firewall in front of a bank answers with an HTML page, and that page
+        used to be handed to the XML parser -- so the operator's error was
+        `Opening and ending tag mismatch: link line 9 and head`, which says
+        nothing about a bank, a firewall or a request that never arrived. It
+        cost a production afternoon to find.
+
+        The check is deliberately on the *bytes*, not on the content type: the
+        page that caused this arrived as `text/html`, but a proxy that mislabels
+        an error page as `text/xml` is exactly the kind of thing that produces
+        this class of confusion in the first place.
+        """
+        if not body:
+            return          # the empty-body refusals below say it better
+        # A BOM is stripped first: it is legal in front of an XML declaration
+        # and a check that refused one would refuse a real bank.
+        head = body.lstrip().lstrip(b"\xef\xbb\xbf").lstrip()
+        if head[:1] == b"<" and not _looks_like_html(head):
+            return
+        excerpt = body[:EXCERPT_BYTES].decode("utf-8", "replace").replace("\n", " ")
+        raise TransportError(
+            f"the bank at {self.url} answered HTTP {status} with "
+            f"{content_type or 'no content type'} that is not an EBICS "
+            f"document, so something in front of it answered instead of it: "
+            f"{excerpt.strip()}",
+            sent=True, status=status)
+
+
+def _looks_like_html(head: bytes) -> bool:
+    """Whether these bytes open an HTML document rather than an XML one."""
+    lowered = head[:200].lower()
+    return lowered.startswith(b"<!doctype html") or lowered.startswith(b"<html")
+
+
+__all__ = ["CONTENT_TYPE", "DEFAULT_TIMEOUT", "EXCERPT_BYTES",
+           "MAX_RESPONSE_BYTES",
            "BankTransport", "TransportError"]
