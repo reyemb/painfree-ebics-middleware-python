@@ -5,7 +5,7 @@ requests and submits them to your banks over EBICS 3.0, so payment files stop
 being something a human uploads by hand.
 
 ```
-your system  ──JSON/HTTPS──▶  painfree  ──EBICS 3.0 (H005)──▶  bank A
+your system  ──JSON/HTTPS──▶  painfree  ──EBICS 3.0 (H005)──▶   bank A
                 (OIDC)         │                                bank B
                                │                                bank C
                                └──webhook──▶  your system
