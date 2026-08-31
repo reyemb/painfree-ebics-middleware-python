@@ -43,7 +43,8 @@ if [ ${#existing[@]} -gt 0 ]; then
     echo >&2
     echo "deploy/secrets/custody_secret is the only copy of the key every stored" >&2
     echo "EBICS private key is sealed under. Replacing it does not reset it — it" >&2
-    echo "orphans the database. To rotate deliberately, see the rotation section" >&2
+    echo "orphans the database. Rotating deliberately is 'python -m painfree" >&2
+    echo "rekey', run with both the old and the new secret present." >&2
     exit 1
 fi
 
