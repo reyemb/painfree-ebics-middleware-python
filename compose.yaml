@@ -102,6 +102,17 @@ services:
       PAINFREE_OIDC_CLIENT_SECRET_FILE: /run/secrets/painfree_oidc_client_secret
       PAINFREE_OIDC_REDIRECT_URI: ${PAINFREE_OIDC_REDIRECT_URI:-}
       PAINFREE_OIDC_ROLES_CLAIM: ${PAINFREE_OIDC_ROLES_CLAIM:-roles}
+      PAINFREE_OIDC_SCOPE_CLAIM: ${PAINFREE_OIDC_SCOPE_CLAIM:-scope}
+      # Defaults to the client id when empty. A deployment serving browsers and
+      # machines from two clients needs a neutral audience both of them put in
+      # `aud`; without this line it could not name one, and every service-account
+      # token was refused as `wrong_audience`.
+      PAINFREE_OIDC_AUDIENCE: ${PAINFREE_OIDC_AUDIENCE:-}
+      # What this deployment's directory calls an administrator, and what it
+      # calls everybody else. Empty means the names this service has always
+      # accepted; both resolved values are in the startup line.
+      PAINFREE_OIDC_ADMIN_ROLE: ${PAINFREE_OIDC_ADMIN_ROLE:-admin,administrator}
+      PAINFREE_OIDC_MEMBER_ROLE: ${PAINFREE_OIDC_MEMBER_ROLE:-member,operator,viewer,auditor}
     # No painfree_custody_secret here, and that omission is the boundary.
     secrets:
       - painfree_database_url
@@ -149,6 +160,11 @@ services:
       PAINFREE_OIDC_ISSUER: ${PAINFREE_OIDC_ISSUER:-}
       PAINFREE_OIDC_CLIENT_ID: ${PAINFREE_OIDC_CLIENT_ID:-}
       PAINFREE_OIDC_REDIRECT_URI: ${PAINFREE_OIDC_REDIRECT_URI:-}
+      # The worker authenticates nobody, so these decide nothing here. They are
+      # passed so its resolved configuration reads identically to the API's in
+      # the startup line, which is the only place an operator compares the two.
+      PAINFREE_OIDC_ADMIN_ROLE: ${PAINFREE_OIDC_ADMIN_ROLE:-admin,administrator}
+      PAINFREE_OIDC_MEMBER_ROLE: ${PAINFREE_OIDC_MEMBER_ROLE:-member,operator,viewer,auditor}
     secrets:
       - painfree_database_url
       - painfree_custody_secret

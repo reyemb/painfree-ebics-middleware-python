@@ -508,3 +508,4 @@ def test_a_local_administrator_survives_renaming_the_directory_group(sqlite_url)
     assert me.status_code == 200, me.text
     assert me.json()["role"] == "admin"
     engine.dispose()
+

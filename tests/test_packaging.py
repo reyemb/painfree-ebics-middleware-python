@@ -214,3 +214,35 @@ def test_the_wheel_ships_only_the_package():
     assert 'packages = ["painfree"]' in wheel_section
     for internal in ["tests", "deploy"]:
         assert internal not in wheel_section
+
+
+def test_every_oidc_setting_reaches_the_api_container():
+    """A setting a deployment cannot set is a setting that does not exist.
+
+    `PAINFREE_OIDC_AUDIENCE` was defined, used to verify every bearer token, and
+    passed to nothing -- so the audience was silently pinned to the client id and
+    a service account from a second client was refused with a message that
+    deliberately does not say why. It was found by someone standing up a real
+    deployment, which is the expensive way.
+
+    So the check is mechanical: every `oidc_` setting the configuration declares
+    has to appear in the `api` service's environment, or be named here as one
+    that deliberately does not.
+    """
+    from painfree.config import Settings
+
+    compose = repo_file("compose.yaml").read_text(encoding="utf-8")
+    api = compose.split("  api:")[1].split("\n  worker:")[0]
+
+    #: Read from a file rather than an environment variable, because it is a
+    #: secret and a container's environment is not where those go.
+    from_a_file = {"oidc_client_secret"}
+    #: Not configurable on purpose: a skew wide enough to matter is a clock
+    #: nobody is fixing, and the refusal is the signal.
+    fixed = {"oidc_clock_skew_seconds"}
+
+    declared = {name for name in Settings.model_fields if name.startswith("oidc_")}
+    for name in sorted(declared - from_a_file - fixed):
+        assert f"PAINFREE_{name.upper()}:" in api, (
+            f"{name} is declared in the configuration and reaches no container: "
+            f"a deployment cannot set it")
