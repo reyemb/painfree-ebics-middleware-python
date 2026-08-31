@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  An intraday account report, held to the official camt.052.001.08 schema in
+  tests/schemas/.
+
+  Its job in the suite is the second half of the money argument. The entry
+  amount is 9007199254740993.01: eighteen significant digits, which is what the
+  ISO 20022 amount type allows and two more than a binary double can hold. A
+  parser that goes anywhere near float loses the last digits of it, and the
+  round trip through the database says so.
+-->
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.052.001.08">
+  <BkToCstmrAcctRpt>
+    <GrpHdr>
+      <MsgId>CH-RPT-20260829-1200</MsgId>
+      <CreDtTm>2026-08-29T12:00:00+02:00</CreDtTm>
+    </GrpHdr>
+    <Rpt>
+      <Id>RPT-2026-0829-1200</Id>
+      <ElctrncSeqNb>17</ElctrncSeqNb>
+      <CreDtTm>2026-08-29T12:00:00+02:00</CreDtTm>
+      <FrToDt>
+        <FrDtTm>2026-08-29T00:00:00+02:00</FrDtTm>
+        <ToDtTm>2026-08-29T12:00:00+02:00</ToDtTm>
+      </FrToDt>
+      <Acct>
+        <Id>
+          <IBAN>CH5604835012345678009</IBAN>
+        </Id>
+        <Ccy>CHF</Ccy>
+      </Acct>
+      <Bal>
+        <Tp>
+          <CdOrPrtry>
+            <Cd>PRCD</Cd>
+          </CdOrPrtry>
+        </Tp>
+        <Amt Ccy="CHF">2949.45</Amt>
+        <CdtDbtInd>DBIT</CdtDbtInd>
+        <Dt>
+          <Dt>2026-08-28</Dt>
+        </Dt>
+      </Bal>
+      <Bal>
+        <Tp>
+          <CdOrPrtry>
+            <Cd>CLAV</Cd>
+          </CdOrPrtry>
+        </Tp>
+        <Amt Ccy="CHF">9007199254740990.06</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Dt>
+          <DtTm>2026-08-29T12:00:00+02:00</DtTm>
+        </Dt>
+      </Bal>
+      <Ntry>
+        <Amt Ccy="CHF">9007199254740993.01</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Sts>
+          <Cd>PDNG</Cd>
+        </Sts>
+        <ValDt>
+          <DtTm>2026-08-29T11:59:00+02:00</DtTm>
+        </ValDt>
+        <BkTxCd>
+          <Prtry>
+            <Cd>ZA-CRDT</Cd>
+          </Prtry>
+        </BkTxCd>
+        <NtryDtls>
+          <TxDtls>
+            <Refs>
+              <EndToEndId>E2E-INTRADAY-0001</EndToEndId>
+            </Refs>
+            <Amt Ccy="CHF">9007199254740993.01</Amt>
+            <CdtDbtInd>CRDT</CdtDbtInd>
+            <AmtDtls>
+              <InstdAmt>
+                <Amt Ccy="EUR">9000000000000000.55</Amt>
+              </InstdAmt>
+            </AmtDtls>
+            <RltdPties>
+              <Dbtr>
+                <Pty>
+                  <Nm>Grossbank Treasury</Nm>
+                </Pty>
+              </Dbtr>
+            </RltdPties>
+            <RmtInf>
+              <Strd>
+                <CdtrRefInf>
+                  <Tp>
+                    <CdOrPrtry>
+                      <Cd>SCOR</Cd>
+                    </CdOrPrtry>
+                  </Tp>
+                  <Ref>RF18539007547034</Ref>
+                </CdtrRefInf>
+              </Strd>
+            </RmtInf>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+    </Rpt>
+  </BkToCstmrAcctRpt>
+</Document>

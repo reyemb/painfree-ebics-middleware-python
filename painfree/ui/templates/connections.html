@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}{{ t('connections.title') }} — painfree{% endblock %}
+{% block body %}
+<h1>{{ t('connections.heading') }}</h1>
+<p class="lede">{{ t('connections.lede') }}</p>
+
+{% if principal and principal.oversight %}
+<p class="lede">{{ t('connections.lede_oversight') }}</p>
+{% elif not (principal and principal.admin) %}
+<p class="lede">{{ t('connections.lede_member') }}</p>
+{% endif %}
+
+{% if may('connections:write') %}
+<p class="actions"><a class="button" href="/ui/connections/new">{{ t('connections.register') }}</a></p>
+{% endif %}
+
+<div class="card">
+{% if connections %}
+<table>
+  <tr><th>{{ t('common.connection') }}</th><th>{{ t('connections.identifiers') }}</th>
+      <th>{{ t('connections.host_url') }}</th>
+      <th>{{ t('connections.key_state') }}</th><th>{{ t('connections.in_flight') }}</th></tr>
+  {% for row in connections %}
+  <tr>
+    <td><a href="/ui/connections/{{ row.connection_id }}"><code>{{ row.connection_id }}</code></a></td>
+    <td><code>{{ row.host_id }}</code> / <code>{{ row.partner_id }}</code> / <code>{{ row.user_id }}</code></td>
+    <td class="mono">{{ row.host_url }}</td>
+    <td><span class="tag {{ row.key_state.value }}">{{ row.key_state.value }}</span><br>
+        <small>{{ t('key_state.' ~ row.key_state.value) }}</small></td>
+    <td>{% set job = outstanding[row.connection_id] %}
+        {% if job %}<span class="tag {{ job.state.value }}">{{ job.action.value }}</span>{% else %}—{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+{% if principal and principal.admin %}
+<p class="empty">{{ t('connections.empty_admin') }}
+  <a href="/ui/connections/new">{{ t('connections.empty_admin_link') }}</a>.</p>
+{% else %}
+<p class="empty"><strong>{{ t('connections.empty_member') }}</strong></p>
+<p>{{ t('connections.empty_member_why') }}</p>
+<p>{{ t('connections.empty_member_where') }}
+<a href="/ui/api">{{ t('connections.empty_member_link') }}</a>.</p>
+{% endif %}
+{% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+{% block title %}{{ t('nav.api') }} — painfree{% endblock %}
+{% block body %}
+<h1>{{ t('api.heading') }}</h1>
+<p class="lede">{{ t('api.lede') }}</p>
+
+{# This page is about the machine-facing side of the service, and that side is
+   English by decision: an endpoint path, a scope name, an error `code` and an
+   audit `action` are contract values a consumer matches on, so translating one
+   would break every client. What is translated here is the prose around them.
+   What is not is said so on the page rather than left to look like a hole in
+   the catalogue. #}
+<p class="lede"><strong>{{ t('api.english_notice') }}</strong></p>
+
+<h2>{{ t('api.schema') }}</h2>
+<div class="card">
+<table class="plain">
+  {% for path, name, blurb in documents %}
+  <tr><td><a href="{{ path }}">{{ name }}</a></td>
+    <td>{{ blurb }}<br><small class="mono">{{ base_url }}{{ path }}</small></td></tr>
+  {% endfor %}
+</table>
+<p><small>{{ t('api.schema_note') }}</small></p>
+</div>
+
+<h2>{{ t('api.authentication') }}</h2>
+<div class="card">
+{% if auth_mode == 'basic' %}
+<p><strong>{{ t('api.basic_credential') }}</strong> {{ t('api.basic_why') }}</p>
+<p>{{ t('api.basic_get_one') }}</p>
+<pre class="json">curl -u "$PAINFREE_ACCOUNT:$PAINFREE_PASSWORD" \
+     -H "Idempotency-Key: $(uuidgen)" \
+     -X POST {{ base_url }}/v1/connections/&lt;connection&gt;/payments \
+     -d @payment.json</pre>
+<p>{{ t('api.basic_tls') }}</p>
+<p>{{ t('api.basic_throttle') }}</p>
+{% else %}
+<p><strong>{{ t('api.no_tokens') }}</strong> {{ t('api.no_tokens_why') }}</p>
+<p>{{ t('api.get_a_token') }}</p>
+<pre class="json">curl -H "Authorization: Bearer $TOKEN" \
+     -H "Idempotency-Key: $(uuidgen)" \
+     -X POST {{ base_url }}/v1/connections/&lt;connection&gt;/payments \
+     -d @payment.json</pre>
+{% endif %}
+<table class="plain">
+  <tr><td>{{ t('api.mode') }}</td><td><span class="mono">{{ auth_mode }}</span>
+    <br><small>{{ auth_mode_reason }}</small>
+    {% if auth_mode == 'development' %}
+    <br><small>{{ t('api.development_mode') }}</small>
+    {% endif %}
+    {% if auth_mode == 'basic' %}
+    <br><small>{{ t('api.basic_mode') }}</small>
+    {% endif %}</td></tr>
+  {% if auth_mode == 'basic' %}
+  <tr><td>{{ t('api.basic_scheme') }}</td><td class="mono">Basic realm="painfree"</td></tr>
+  <tr><td>{{ t('api.basic_hash') }}</td><td class="mono">{{ password_hashing }}</td></tr>
+  <tr><td>{{ t('api.basic_lockout') }}</td><td>{{ t('api.basic_lockout_value') }}</td></tr>
+  {% else %}
+  <tr><td>{{ t('api.issuer') }}</td><td class="mono">{{ provider.issuer or t('api.not_configured') }}</td></tr>
+  <tr><td>{{ t('api.audience') }}</td><td class="mono">{{ provider.audience or '—' }}</td></tr>
+  <tr><td>{{ t('api.client_id') }}</td><td class="mono">{{ provider.client_id or '—' }}</td></tr>
+  <tr><td>{{ t('api.roles_claim') }}</td><td class="mono">{{ provider.roles_claim }}</td></tr>
+  <tr><td>{{ t('api.scope_claim') }}</td><td class="mono">{{ provider.scope_claim }}</td></tr>
+  {% endif %}
+</table>
+{% if auth_mode == 'basic' %}
+<p><small>{{ t('api.basic_sign_out') }}</small></p>
+{% else %}
+<p><small>{{ t('api.roles_note') }}</small></p>
+{% endif %}
+</div>
+
+<h2>{{ t('api.you') }}</h2>
+<div class="card">
+<table class="plain">
+  <tr><td>{{ t('access.subject') }}</td><td class="mono">{{ me.subject }}</td></tr>
+  <tr><td>{{ t('api.issuer') }}</td><td class="mono">{{ me.issuer }}</td></tr>
+  <tr><td>{{ t('api.authenticated_by') }}</td><td>{{ me.method }}</td></tr>
+  <tr><td>{{ t('api.role') }}</td><td><strong>{{ me.role }}</strong>
+    {% if me.role == 'admin' %}
+      <br><small>{{ t('api.role_admin') }}</small>
+    {% else %}
+      <br><small>{{ t('api.role_member') }}</small>
+    {% endif %}</td></tr>
+  <tr><td>{{ t('access.access') }}</td><td>
+    {% if me.role == 'admin' %}
+      {{ t('api.every_connection') }}
+    {% elif me.oversight and not me.grants %}
+      <span class="tag viewer">oversight</span> {{ t('access.every_connection_readonly') }}
+    {% elif me.grants %}
+      {% if me.oversight %}<span class="tag viewer">oversight</span>
+      {{ t('access.every_connection_readonly') }}<br>{% endif %}
+      {% for grant in me.grants %}
+        <span class="mono">{{ grant.connection_id }}</span>
+        <span class="tag {{ grant.level }}">{{ grant.level }}</span>{{ '' if loop.last else ' · ' }}
+      {% endfor %}
+    {% else %}
+      <em>{{ t('api.no_grants') }}</em>
+    {% endif %}</td></tr>
+  <tr><td>{{ t('api.claimed_roles') }}</td><td>{{ me.roles | join(', ') or t('access.none') }}
+    {% if unmapped %}
+    {# A provider that starts sending a role name this service has no mapping
+       for grants nothing, silently. Saying so here is the difference between a
+       five-minute fix and an afternoon. #}
+    <br><small>{{ t('api.unmapped') }}
+      {% for name in unmapped %}<span class="mono">{{ name }}</span>{{ '' if loop.last else ', ' }}{% endfor %}</small>
+    {% endif %}</td></tr>
+  <tr><td>{{ t('api.expires') }}</td><td class="mono">{{ me.expires_at or '—' }}</td></tr>
+  <tr><td>{{ t('api.effective_scopes') }}</td><td>
+    {% if me.scopes %}
+      {% for name in me.scopes %}<span class="mono">{{ name }}</span>{{ '' if loop.last else ' · ' }}{% endfor %}
+      {% if me.role != 'admin' and not me.oversight %}
+      <br><small>{{ t('api.scopes_per_connection') }}</small>
+      {% elif me.oversight %}
+      <br><small>{{ t('api.scopes_oversight') }}</small>
+      {% endif %}
+    {% else %}
+      <em>{{ t('api.scopes_none') }}</em>
+    {% endif %}</td></tr>
+</table>
+<p><small>{{ t('api.auth_me') }} <a href="/auth/me">GET /auth/me</a>{{ t('api.auth_me_tail') }}</small></p>
+</div>
+
+<h2>{{ t('api.privileges') }}</h2>
+<p class="lede">{{ t('api.privileges_lede') }}</p>
+<div class="card">
+<table>
+  <tr><th>{{ t('api.scope') }}</th><th>{{ t('api.what_it_allows') }}</th>
+      {% for row in roles %}<th>{{ t('api.role_column') }}: {{ row.role }}</th>{% endfor %}
+      {% for row in grant_levels %}<th>{{ t('api.level_column') }}: {{ row.level }}</th>{% endfor %}
+      <th>oversight</th>
+      <th>{{ t('api.you_column') }}</th></tr>
+  {% for scope in scopes %}
+  <tr>
+    <td><span class="mono">{{ scope.scope }}</span></td>
+    <td>{{ scope.summary }}
+      {% if scope.admin_only %}
+      <br><small>{{ t('api.admin_only') }}</small>
+      {% endif %}</td>
+    {% for row in roles %}
+    <td>{{ '✓' if scope.scope in row.scopes else '—' }}</td>
+    {% endfor %}
+    {% for row in grant_levels %}
+    <td>{{ '✓' if scope.scope in row.scopes else '—' }}</td>
+    {% endfor %}
+    <td>{{ '✓' if scope.oversight else '—' }}</td>
+    <td>{{ '✓' if scope.held else '—' }}</td>
+  </tr>
+  {% endfor %}
+</table>
+<p><small>{{ t('api.oversight_carries') }}
+  {% for name in oversight_scopes %}<span class="mono">{{ name }}</span>{{ '.' if loop.last else ' · ' }}{% endfor %}
+  {{ t('api.oversight_derived') }}</small></p>
+</div>
+
+<h2>{{ t('api.endpoints') }}</h2>
+<p class="lede">{{ t('api.endpoints_lede') }}</p>
+<div class="card">
+<table>
+  <tr><th>{{ t('api.method') }}</th><th>{{ t('api.path') }}</th>
+      <th>{{ t('api.what') }}</th><th>{{ t('api.needs') }}</th></tr>
+  {% for row in routes %}
+  <tr>
+    <td class="mono">{{ row.method }}</td>
+    <td class="mono">{{ row.path }}</td>
+    <td>{{ row.summary }}</td>
+    <td>
+      {% if row.role %}
+        <strong>{{ row.role }}</strong> {{ t('api.only') }}
+        <br><small>{{ t('api.a_role_not_a_scope') }}</small>
+      {% elif row.scopes %}
+        {% for name in row.scopes %}<span class="mono">{{ name }}</span>{{ '' if loop.last else ' + ' }}{% endfor %}
+        {% if row.per_connection %}
+        <br><small>{{ t('api.on_this_connection') }}</small>
+        {% endif %}
+      {% elif row.public %}
+        <small>{{ t('api.no_credential') }}</small>
+      {% else %}
+        <small>{{ t('api.any_authenticated') }}</small>
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+</div>
+
+<div class="card">
+<h3>{{ t('api.any_credential') }}</h3>
+{% if unscoped %}
+<p>{{ t('api.any_credential_why') }}</p>
+<ul>
+  {% for row in unscoped %}
+  <li><span class="mono">{{ row.method }} {{ row.path }}</span>: {{ row.summary }}</li>
+  {% endfor %}
+</ul>
+{% else %}
+<p>{{ t('api.any_credential_none') }}</p>
+{% endif %}
+<p><small>{{ t('api.public_paths') }}</small></p>
+</div>
+{% endblock %}

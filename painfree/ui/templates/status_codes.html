@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}{{ t('status_codes.title') }} — painfree{% endblock %}
+{% block body %}
+<h1>{{ t('status_codes.heading') }}</h1>
+<p class="lede">{{ t('status_codes.lede') }}</p>
+
+<div class="card">
+<p>{{ t('status_codes.levels') }}</p>
+<p>{{ t('status_codes.terminal') }}</p>
+</div>
+
+<div class="card">
+{# The code and the ISO 20022 name are the standard's own and are shown as the
+   standard writes them. The meaning beside each is this service's gloss, and
+   the gloss is what a locale changes. #}
+<table>
+  <tr><th>{{ t('status_codes.code') }}</th><th>{{ t('status_codes.iso_name') }}</th>
+      <th>{{ t('status_codes.meaning') }}</th><th>{{ t('status_codes.becomes') }}</th></tr>
+  {% for code in codes %}
+  <tr>
+    <td><code>{{ code.code }}</code></td>
+    <td>{{ code.name }}</td>
+    <td>{{ t.maybe('status_code.' ~ code.code, code.meaning) }}</td>
+    <td>{% if code.outcome == 'no change' %}<span class="tag created">{{ t('order.no_change') }}</span>{% else %}<span class="tag {{ code.outcome }}">{{ code.outcome }}</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table>
+<p class="hint">{{ t('status_codes.unknown') }}</p>
+</div>
+
+<div class="card">
+<p><strong>{{ t('status_codes.part_heading') }}</strong>
+{{ t('status_codes.part_body') }}</p>
+<p><strong>{{ t('status_codes.not_ebics_heading') }}</strong>
+{{ t('status_codes.not_ebics_body') }}</p>
+</div>
+{% endblock %}

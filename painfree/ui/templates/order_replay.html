@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% import "_bank.html" as bank with context %}
+{% block title %}{{ t('replay.title') }} {{ order.order_id }} — painfree{% endblock %}
+{% block body %}
+<h1>{{ t('replay.heading') }} <code>{{ order.order_id }}</code>?</h1>
+
+<div class="card warn">
+<p><strong>{{ t('replay.warning') }}</strong> {{ t('replay.exactly_this') }}</p>
+<table class="plain">
+  <tr><td>{{ t('common.connection') }}</td><td><code>{{ order.connection_id }}</code></td></tr>
+  <tr><td>MsgId</td><td><code>{{ order.msg_id }}</code></td></tr>
+  <tr><td>{{ t('replay.message') }}</td><td>{{ order.message_type }}</td></tr>
+  <tr><td>{{ t('order.transactions') }}</td><td>{{ order.transaction_count | count }}</td></tr>
+  <tr><td>{{ t('replay.total') }}</td><td><strong>{{ order.control_sum | amount(order.currency) }}</strong></td></tr>
+  <tr><td>{{ t('order.requested_execution') }}</td><td>{{ order.requested_execution_date | day }}</td></tr>
+  <tr><td>{{ t('replay.current_state') }}</td><td><span class="tag {{ order.state.value }}">{{ order.state.value }}</span>
+      {{ t('state.' ~ order.state.value) }}</td></tr>
+  <tr><td>{{ t('replay.bank_said') }}</td><td>{% if order.return_code %}<code>{{ order.return_code }}</code>
+      {{ bank.quiet(order.report_text) }}{% else %}{{ t('replay.bank_said_nothing') }}{% endif %}</td></tr>
+</table>
+</div>
+
+<div class="card">
+<p><strong>{{ t('replay.no_second_payment') }}</strong> {{ t('replay.no_second_payment_why') }}</p>
+<form method="post" action="/ui/orders/{{ order.order_id }}/replay">
+  <input type="hidden" name="confirm" value="replay">
+  <div class="actions">
+    <button type="submit">{{ t('replay.confirm') }}</button>
+    <a class="button secondary" href="/ui/orders/{{ order.order_id }}">{{ t('common.cancel') }}</a>
+  </div>
+</form>
+</div>
+{% endblock %}

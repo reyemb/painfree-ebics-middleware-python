@@ -1,0 +1,90 @@
+{# The console's icons: inline SVG, drawn here, in this file.
+
+   No icon font and no icon package. Three reasons, in order of how much they
+   matter. The container must render a page without reaching the network, so a
+   CDN is out. A self-hosted set is a third-party file with a licence to record
+   and a version to carry, for nine glyphs. And an inline `<svg>` inherits
+   `currentColor`, so one drawing works in both themes with no second asset.
+
+   Everything is a 24x24 outline stroked with `currentColor` at 1.7, which is
+   Material's outlined weight at this size. `aria-hidden` on all of them: an
+   icon in this console never carries meaning its label does not already say. #}
+
+{% macro _svg(paths) %}
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+     focusable="false">{{ paths }}</svg>
+{% endmacro %}
+
+{# --- the brand mark -------------------------------------------------------
+   A rounded tile carrying a monoline lowercase `p`, drawn from exact geometry:
+   one rounded rectangle for the stem and one stroked circle for the bowl. Four
+   things that geometry buys, each of which the hand-traced placeholder it
+   replaced did not have.
+
+   IT SURVIVES 16 PIXELS. The stem is 4/32 of the tile and the bowl is stroked
+   at the same weight, so both are 2 CSS pixels in a browser tab; the counter is
+   5.6/32, which is still an open hole at that size rather than a smudge. A
+   filled letterform at this size closes up.
+
+   IT IS THE SAME DRAWING AS THE OTHER NINE ICONS. Monoline, round terminals,
+   the proportions of the outlined weight. A logo drawn in a different language
+   from the icons beside it in the same app bar looks borrowed.
+
+   IT IS PURE PATHS, SO THE FAVICON IS THE MARK. The previous favicon was an
+   SVG `<text>` element asking for `system-ui`, which is a font a favicon
+   renderer is under no obligation to have -- and where it did not, the tab
+   showed an empty blue square. `base.html` carries these same two shapes.
+
+   THE TONE IS THE ONE THAT WORKS ON BOTH THEMES. `#4568d0` is the primary ramp
+   near tone 50 rather than the tone-40 `--pf-primary` the console draws with,
+   because a mark has to sit on `#f7f9fe` and on `#121316` and be seen on both:
+   it measures 4.73:1 against the light surface and 3.67:1 against the dark one,
+   where tone 40 measures 6.2:1 and 2.8:1 and disappears at night. It does not
+   follow the theme -- a logo that is two colours is two logos -- and the shape
+   carries it in monochrome, so nothing here depends on colour being seen. #}
+{% macro logo() %}
+<svg class="pf-logo" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+  <rect width="32" height="32" rx="7.5" fill="#4568d0"/>
+  <rect x="7.8" y="7" width="4" height="18" rx="2" fill="#ffffff"/>
+  <circle cx="17.4" cy="14" r="4.8" fill="none" stroke="#ffffff" stroke-width="4"/>
+</svg>
+{% endmacro %}
+
+{# --- navigation ----------------------------------------------------------- #}
+
+{% macro connections() %}{{ _svg('<path d="M3 9.5 12 4l9 5.5"/><path d="M5 10.5v8M9.5 10.5v8M14.5 10.5v8M19 10.5v8"/><path d="M3 21h18"/>'|safe) }}{% endmacro %}
+
+{% macro orders() %}{{ _svg('<rect x="2.5" y="6" width="19" height="12" rx="2.5"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9.6v4.8M18 9.6v4.8"/>'|safe) }}{% endmacro %}
+
+{% macro statements() %}{{ _svg('<path d="M6 3.2h7.6L18 7.6V20.8H6z"/><path d="M13.4 3.2v4.6H18"/><path d="M9 12.5h6M9 16h6"/>'|safe) }}{% endmacro %}
+
+{% macro schedules() %}{{ _svg('<circle cx="12" cy="12" r="8.4"/><path d="M12 7.2V12l3.4 2"/>'|safe) }}{% endmacro %}
+
+{% macro webhooks() %}{{ _svg('<circle cx="12" cy="5.4" r="2.6"/><circle cx="5.6" cy="17.6" r="2.6"/><circle cx="18.4" cy="17.6" r="2.6"/><path d="M10.7 7.7 6.9 15.2M13.3 7.7l3.8 7.5M8.2 17.6h7.6"/>'|safe) }}{% endmacro %}
+
+{% macro access() %}{{ _svg('<circle cx="9.2" cy="8.2" r="3.2"/><path d="M3.4 20a5.8 5.8 0 0 1 11.6 0"/><path d="M16.4 5.4a3.2 3.2 0 0 1 0 5.6M17.6 14.6A5.8 5.8 0 0 1 20.6 20"/>'|safe) }}{% endmacro %}
+
+{% macro audit() %}{{ _svg('<path d="M3.6 12a8.4 8.4 0 1 0 2.7-6.2L3.2 8.6"/><path d="M3 4.4v4.4h4.4"/><path d="M12 7.6V12l3.4 2"/>'|safe) }}{% endmacro %}
+
+{% macro status_codes() %}{{ _svg('<path d="M3.5 7.2 5.2 8.9 8.4 5.4"/><path d="M3.5 15.7l1.7 1.7 3.2-3.5"/><path d="M11.5 7.2h9M11.5 16h9"/>'|safe) }}{% endmacro %}
+
+{% macro api() %}{{ _svg('<path d="M9.2 7 4.6 12l4.6 5M14.8 7l4.6 5-4.6 5"/>'|safe) }}{% endmacro %}
+
+{# --- app bar --------------------------------------------------------------- #}
+
+{% macro menu() %}{{ _svg('<path d="M4 7h16M4 12h16M4 17h16"/>'|safe) }}{% endmacro %}
+
+{% macro close() %}{{ _svg('<path d="M6.2 6.2 17.8 17.8M17.8 6.2 6.2 17.8"/>'|safe) }}{% endmacro %}
+
+{% macro language() %}{{ _svg('<circle cx="12" cy="12" r="8.6"/><path d="M3.4 12h17.2"/><path d="M12 3.4c2.3 2.4 3.5 5.4 3.5 8.6s-1.2 6.2-3.5 8.6c-2.3-2.4-3.5-5.4-3.5-8.6s1.2-6.2 3.5-8.6Z"/>'|safe) }}{% endmacro %}
+
+{% macro bell() %}{{ _svg('<path d="M6.6 10.4a5.4 5.4 0 0 1 10.8 0c0 3.9 1.6 5.4 1.6 5.4H5s1.6-1.5 1.6-5.4Z"/><path d="M9.9 18.6a2.3 2.3 0 0 0 4.2 0"/>'|safe) }}{% endmacro %}
+
+{# --- the three theme states ------------------------------------------------ #}
+
+{% macro theme_system() %}{{ _svg('<circle cx="12" cy="12" r="8.4"/><path d="M12 3.6a8.4 8.4 0 0 1 0 16.8Z" fill="currentColor" stroke="none"/>'|safe) }}{% endmacro %}
+
+{% macro theme_light() %}{{ _svg('<circle cx="12" cy="12" r="4"/><path d="M12 2.6v2.2M12 19.2v2.2M4.3 4.3l1.6 1.6M18.1 18.1l1.6 1.6M2.6 12h2.2M19.2 12h2.2M4.3 19.7l1.6-1.6M18.1 5.9l1.6-1.6"/>'|safe) }}{% endmacro %}
+
+{% macro theme_dark() %}{{ _svg('<path d="M20.2 14.4A8.6 8.6 0 0 1 9.6 3.8a8.6 8.6 0 1 0 10.6 10.6Z"/>'|safe) }}{% endmacro %}

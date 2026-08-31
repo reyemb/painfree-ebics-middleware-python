@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}{{ t('schedules.title') }} — painfree{% endblock %}
+{% block body %}
+<h1>{{ t('schedules.heading') }}</h1>
+<p class="lede">{{ t('schedules.lede') }}</p>
+
+{# The reason an operator opens this page. Above the table, before any filter.
+   `failing` is derived from the engine's own return-code table, so a `090005`
+   cannot end up here. #}
+{% if failing %}
+<div class="card bad">
+  <h2>{{ t('schedules.failing_heading', count=failing | length) }}</h2>
+  <p>{{ t('schedules.failing_why') }}</p>
+  <ul>
+    {% for row in failing %}
+    <li><a href="/ui/schedules/{{ row.schedule_id }}">{{ row.description or row.label }}</a>
+        {{ t('schedules.on') }} <code>{{ row.connection_id }}</code>:
+        {{ t('schedules.last_run_at', when=row.last_run_at | moment) }}
+        {% if row.last_return_code %}, {{ t('schedules.bank_said') }} <span class="mono">{{ row.last_return_code }}</span>{% endif %}
+        {% if row.last_error %}<br><small class="mono">{{ row.last_error }}</small>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{% if behind %}
+<div class="card warn">
+  <h2>{{ t('schedules.behind_heading', count=behind | length) }}</h2>
+  <p>{{ t('schedules.behind_why') }}</p>
+  <ul>
+    {% for row in behind %}
+    <li><a href="/ui/schedules/{{ row.schedule_id }}">{{ row.description or row.label }}</a>:
+        {{ t('schedules.covered_through') }} {{ row.fetched_through | day if row.fetched_through else t('schedules.nothing_yet') }},
+        {{ t('schedules.days_outstanding', count=windows[row.schedule_id].days_behind) }}
+        ({{ t('schedules.asking') }} {{ windows[row.schedule_id].pending_start | day }} → {{ windows[row.schedule_id].pending_end | day }})
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<form class="filters" method="get" action="/ui/schedules">
+  <div><label for="connection_id">{{ t('common.connection') }}</label>
+    <select id="connection_id" name="connection_id">
+      <option value="">{{ t('common.every_connection') }}</option>
+      {% for row in connections %}
+      <option value="{{ row.connection_id }}" {{ 'selected' if row.connection_id == selected_connection else '' }}>{{ row.connection_id }}</option>
+      {% endfor %}
+    </select></div>
+  <button type="submit" class="secondary">{{ t('common.filter') }}</button>
+  {% if may('schedules:manage') %}
+  <a class="button" href="/ui/schedules/new">{{ t('schedules.add') }}</a>
+  {% endif %}
+</form>
+
+<div class="card">
+{% if schedules %}
+<table>
+  <tr><th>{{ t('schedules.schedule') }}</th><th>{{ t('schedules.fetches') }}</th>
+      <th>{{ t('common.connection') }}</th><th>{{ t('schedules.cadence') }}</th>
+      <th>{{ t('webhooks.health') }}</th><th>{{ t('schedules.last_run') }}</th>
+      <th>{{ t('schedules.covered_through_column') }}</th><th>{{ t('schedules.next_due') }}</th></tr>
+  {% for row in schedules %}
+  <tr>
+    <td><a href="/ui/schedules/{{ row.schedule_id }}">{{ row.description or row.label }}</a>
+        <br><small class="mono">{{ row.schedule_id }}</small></td>
+    {# The BTF is the bank's own order parameters. Every value in this cell is
+       a protocol identifier and none of them is translated. #}
+    <td><span class="mono">{{ row.label }}</span>
+        <br><small>{{ t('schedules.service') }} <code>{{ row.service_name }}</code>{% if row.scope %}, {{ t('schedules.scope') }} <code>{{ row.scope }}</code>{% endif %}{% if row.container %}, <code>{{ row.container }}</code>{% endif %}</small></td>
+    <td><a href="/ui/connections/{{ row.connection_id }}"><code>{{ row.connection_id }}</code></a></td>
+    <td>{{ row.cadence.total_seconds() | int | cadence }}</td>
+    <td><span class="tag {{ row.health }}">{{ row.health }}</span>
+        {% if row.running %}<br><small>{{ t('schedules.running_now') }}</small>{% endif %}</td>
+    <td>
+      {% if last_runs[row.schedule_id] %}
+        {% set run = last_runs[row.schedule_id] %}
+        <span class="tag run-{{ run.state }}">{{ run.state }}</span>
+        {% if run.state == 'empty' %}<br><small>{{ t('schedules.bank_had_nothing') }}</small>
+        {% elif run.state == 'complete' %}<br><small>{{ t('schedules.statement_count', count=run.statements) }}</small>
+        {% elif run.return_code %}<br><small class="mono">{{ run.return_code }}</small>{% endif %}
+        <br><small>{{ row.last_run_at | moment }}</small>
+      {% else %}
+        <small>{{ t('schedules.never_run') }}</small>
+      {% endif %}
+    </td>
+    <td>
+      {% if windows[row.schedule_id].dated %}
+        {{ row.fetched_through | day if row.fetched_through else '—' }}
+        {% if windows[row.schedule_id].behind %}
+        <br><small class="mono">{{ t('schedules.days_outstanding', count=windows[row.schedule_id].days_behind) }}</small>
+        {% endif %}
+      {% else %}
+        <small>{{ t('schedules.no_date_range') }}</small>
+      {% endif %}
+    </td>
+    <td>{{ row.due_at | moment }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="empty">{{ t('schedules.empty') }}</p>
+{% endif %}
+</div>
+{% endblock %}

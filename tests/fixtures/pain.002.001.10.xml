@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  A payment status report answering a pain.001 this service sent, held to the
+  official pain.002.001.10 schema in tests/schemas/.
+
+  It is deliberately a partial acceptance, because that is the case a parser
+  gets wrong: the group says PART, the payment block says ACCP, and one of the
+  two transactions inside it is RJCT with a reason code. A reader that took "the
+  status" from any one level would report this message as accepted or as
+  rejected, and both answers are wrong.
+
+  OrgnlMsgId is the MsgId this service generates at accept time and stores on
+  payment_order. It is the join, and it is why the status report is worth
+  downloading at all.
+-->
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.002.001.10">
+  <CstmrPmtStsRpt>
+    <GrpHdr>
+      <MsgId>STSRPT-20260829-0001</MsgId>
+      <CreDtTm>2026-08-29T08:00:00+02:00</CreDtTm>
+    </GrpHdr>
+    <OrgnlGrpInfAndSts>
+      <OrgnlMsgId>PF3868D16485F403EA96B3AF3B78F98E6</OrgnlMsgId>
+      <OrgnlMsgNmId>pain.001.001.09</OrgnlMsgNmId>
+      <OrgnlCreDtTm>2026-08-28T17:42:11+02:00</OrgnlCreDtTm>
+      <OrgnlNbOfTxs>2</OrgnlNbOfTxs>
+      <OrgnlCtrlSum>4199.75</OrgnlCtrlSum>
+      <GrpSts>PART</GrpSts>
+    </OrgnlGrpInfAndSts>
+    <OrgnlPmtInfAndSts>
+      <OrgnlPmtInfId>PMTINF-0001</OrgnlPmtInfId>
+      <OrgnlNbOfTxs>2</OrgnlNbOfTxs>
+      <OrgnlCtrlSum>4199.75</OrgnlCtrlSum>
+      <PmtInfSts>ACCP</PmtInfSts>
+      <TxInfAndSts>
+        <StsId>STS-0001</StsId>
+        <OrgnlInstrId>INSTR-0001</OrgnlInstrId>
+        <OrgnlEndToEndId>E2E-0001</OrgnlEndToEndId>
+        <TxSts>ACSP</TxSts>
+        <AccptncDtTm>2026-08-29T07:55:03+02:00</AccptncDtTm>
+        <OrgnlTxRef>
+          <Amt>
+            <InstdAmt Ccy="CHF">3949.75</InstdAmt>
+          </Amt>
+          <ReqdExctnDt>
+            <Dt>2026-09-01</Dt>
+          </ReqdExctnDt>
+        </OrgnlTxRef>
+      </TxInfAndSts>
+      <TxInfAndSts>
+        <StsId>STS-0002</StsId>
+        <OrgnlInstrId>INSTR-0002</OrgnlInstrId>
+        <OrgnlEndToEndId>E2E-0002</OrgnlEndToEndId>
+        <TxSts>RJCT</TxSts>
+        <StsRsnInf>
+          <Orgtr>
+            <Nm>CREDIT SUISSE (SCHWEIZ) AG</Nm>
+          </Orgtr>
+          <Rsn>
+            <Cd>AC01</Cd>
+          </Rsn>
+          <AddtlInf>Creditor account number invalid</AddtlInf>
+          <AddtlInf>IBAN check digit</AddtlInf>
+        </StsRsnInf>
+        <OrgnlTxRef>
+          <Amt>
+            <InstdAmt Ccy="CHF">250.00</InstdAmt>
+          </Amt>
+          <ReqdExctnDt>
+            <Dt>2026-09-01</Dt>
+          </ReqdExctnDt>
+        </OrgnlTxRef>
+      </TxInfAndSts>
+    </OrgnlPmtInfAndSts>
+  </CstmrPmtStsRpt>
+</Document>

@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  A debit/credit notification, held to the official camt.054.001.09 schema in
+  tests/schemas/.
+
+  It is at .09 rather than .08 because no copy of camt.054.001.08.xsd could be
+  found from this environment, and a schema is not something to reconstruct by
+  hand; tests/schemas/README.md records the search. That the three camt fixtures
+  now span two ISO versions is useful rather than awkward: the parser reads by
+  local name, and this is what proves it.
+
+  Two notifications in one document, because a bank sends them that way and a
+  parser that returns "the statement" rather than a list quietly loses one.
+-->
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.054.001.09">
+  <BkToCstmrDbtCdtNtfctn>
+    <GrpHdr>
+      <MsgId>CH-NTFCTN-20260829-0007</MsgId>
+      <CreDtTm>2026-08-29T09:31:14+02:00</CreDtTm>
+    </GrpHdr>
+    <Ntfctn>
+      <Id>NTFCTN-2026-0829-A</Id>
+      <CreDtTm>2026-08-29T09:31:14+02:00</CreDtTm>
+      <Acct>
+        <Id>
+          <IBAN>CH5604835012345678009</IBAN>
+        </Id>
+        <Ccy>CHF</Ccy>
+      </Acct>
+      <Ntry>
+        <NtryRef>NTF-0001</NtryRef>
+        <Amt Ccy="CHF">1250.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Sts>
+          <Cd>BOOK</Cd>
+        </Sts>
+        <BookgDt>
+          <Dt>2026-08-29</Dt>
+        </BookgDt>
+        <ValDt>
+          <Dt>2026-08-29</Dt>
+        </ValDt>
+        <BkTxCd>
+          <Domn>
+            <Cd>PMNT</Cd>
+            <Fmly>
+              <Cd>RCDT</Cd>
+              <SubFmlyCd>VCOM</SubFmlyCd>
+            </Fmly>
+          </Domn>
+        </BkTxCd>
+        <NtryDtls>
+          <TxDtls>
+            <Refs>
+              <EndToEndId>E2E-QR-0001</EndToEndId>
+            </Refs>
+            <Amt Ccy="CHF">1250.00</Amt>
+            <CdtDbtInd>CRDT</CdtDbtInd>
+            <RltdPties>
+              <Dbtr>
+                <Pty>
+                  <Nm>Muster Handels GmbH</Nm>
+                </Pty>
+              </Dbtr>
+              <DbtrAcct>
+                <Id>
+                  <IBAN>CH4821966000009613388</IBAN>
+                </Id>
+              </DbtrAcct>
+            </RltdPties>
+            <RmtInf>
+              <Strd>
+                <CdtrRefInf>
+                  <Tp>
+                    <CdOrPrtry>
+                      <Prtry>QRR</Prtry>
+                    </CdOrPrtry>
+                  </Tp>
+                  <Ref>210000000003139471430009017</Ref>
+                </CdtrRefInf>
+              </Strd>
+            </RmtInf>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+    </Ntfctn>
+    <Ntfctn>
+      <Id>NTFCTN-2026-0829-B</Id>
+      <CreDtTm>2026-08-29T09:31:14+02:00</CreDtTm>
+      <Acct>
+        <Id>
+          <IBAN>CH4431999123000889012</IBAN>
+        </Id>
+        <Ccy>CHF</Ccy>
+      </Acct>
+      <Ntry>
+        <Amt Ccy="CHF">88.05</Amt>
+        <CdtDbtInd>DBIT</CdtDbtInd>
+        <RvslInd>true</RvslInd>
+        <Sts>
+          <Cd>BOOK</Cd>
+        </Sts>
+        <BookgDt>
+          <Dt>2026-08-29</Dt>
+        </BookgDt>
+        <BkTxCd>
+          <Domn>
+            <Cd>PMNT</Cd>
+            <Fmly>
+              <Cd>RCDT</Cd>
+              <SubFmlyCd>RRTN</SubFmlyCd>
+            </Fmly>
+          </Domn>
+        </BkTxCd>
+        <AddtlNtryInf>Rueckbuchung</AddtlNtryInf>
+      </Ntry>
+    </Ntfctn>
+  </BkToCstmrDbtCdtNtfctn>
+</Document>

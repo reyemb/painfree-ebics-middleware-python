@@ -1,0 +1,45 @@
+# The only service with a published port. It terminates TLS and forwards
+# cleartext to the API over the compose network; the API is never reachable
+# from outside this stack.
+#
+# PAINFREE_SITE_ADDRESS decides what TLS is: a hostname gets an automatic
+# publicly trusted certificate, and `https://painfree.localhost` gets one from
+# Caddy's own local CA — which is what makes this file runnable on a machine
+# with no DNS and no internet, and therefore testable.
+
+{
+	# The admin API listens on all interfaces by default. Nothing here uses it.
+	admin off
+	# One JSON object per line, to stdout, for the same reason the application
+	# does it: one stream, one shape, `podman logs` is enough.
+	log {
+		output stdout
+		format json
+	}
+}
+
+{$PAINFREE_SITE_ADDRESS} {
+	encode zstd gzip
+
+	# Forwarded so the application sees the scheme and host the browser used
+	# rather than the ones the proxy dialled. The OIDC redirect URI is
+	# configuration and never derived from a header (see painfree/config.py),
+	# so a forged Host cannot choose where a login comes back to.
+	reverse_proxy api:8000 {
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-Host {host}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "same-origin"
+		-Server
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}

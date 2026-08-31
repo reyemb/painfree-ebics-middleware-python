@@ -1,0 +1,213 @@
+# painfree — the production shape. Four services, one image, one secret split.
+#
+# Development needs none of this: `python -m painfree serve` runs against SQLite
+# with nothing to provision. This file is what a deployment looks
+# like, and the thing it is arranged to make visible is the custody boundary.
+#
+#   api     serves HTTP.    No PAINFREE_KEY_ENCRYPTION_SECRET, no secret mount.
+#   worker  uploads and downloads. Holds it, and is the only service that does.
+#
+# That is not a convention here: PAINFREE_ROLE=api refuses to start with the
+# secret and PAINFREE_ROLE=worker refuses to start without it, so
+# moving the secret to the wrong service produces a container that will not
+# boot rather than a boundary that quietly moved.
+#
+# Every secret is a *file* mounted at runtime. Nothing secret is baked into the
+# image and nothing secret is written in this file: each `secrets:` entry names
+# a path under deploy/secrets/ that `deploy/init-secrets.sh` generates and
+# .gitignore excludes. Any PAINFREE_X can be read from a file by setting
+# PAINFREE_X_FILE, which is how the URL carrying the database password and the
+# custody secret get in without passing through a container's environment.
+#
+# Written to run under both `docker compose` and `podman-compose`; what it was
+# actually verified with is podman.
+#
+# Everything not secret comes from the .env file beside this one — see
+# deploy/production.env.example.
+
+name: painfree
+
+services:
+
+  db:
+    # postgres:16.14-alpine, by digest. A tag can be moved; this cannot.
+    image: docker.io/library/postgres@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: painfree
+      POSTGRES_USER: painfree
+      POSTGRES_PASSWORD_FILE: /run/secrets/painfree_db_password
+      # Without this, initdb trusts every local connection.
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+    secrets:
+      - painfree_db_password
+    volumes:
+      # The named volume that holds the sealed keys, the order history, the
+      # idempotency ledger and the audit trail. Losing it is one of the two
+      # ways to lose a deployment.
+      - painfree-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U painfree -d painfree"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    # Not published. The database is reachable from the two painfree services
+    # and from nowhere else; a backup runs `pg_dump` inside this container.
+    expose:
+      - "5432"
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1g
+
+  api:
+    image: ${PAINFREE_IMAGE}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PAINFREE_ROLE: api
+      PAINFREE_ENVIRONMENT: production
+      PAINFREE_DATABASE_URL_FILE: /run/secrets/painfree_database_url
+      PAINFREE_HTTP_PORT: "8000"
+      PAINFREE_LOG_LEVEL: ${PAINFREE_LOG_LEVEL:-INFO}
+      # One process migrates. The API is the one that does, because it is the
+      # one that must not serve a request against a schema older than its
+      # queries; the worker waits for the schema it needs.
+      PAINFREE_MIGRATE_ON_STARTUP: "true"
+      # Left empty unless `.env` names one, and empty means unset. A deployment
+      # that configures an identity provider resolves to `oidc`; one that does
+      # not resolves to `basic` and authenticates against accounts it owns
+      # Naming the mode in `.env` overrides both.
+      PAINFREE_AUTH_MODE: ${PAINFREE_AUTH_MODE:-}
+      # The statement `basic` mode refuses to start without: the `proxy` below
+      # terminates TLS and the API is never published, so no credential crosses
+      # a plaintext hop. It is on this service and not on the worker, because
+      # the worker serves no HTTP and has no proxy in front of it to declare.
+      PAINFREE_TLS_TERMINATED_UPSTREAM: "true"
+      PAINFREE_OIDC_ISSUER: ${PAINFREE_OIDC_ISSUER:-}
+      PAINFREE_OIDC_CLIENT_ID: ${PAINFREE_OIDC_CLIENT_ID:-}
+      PAINFREE_OIDC_CLIENT_SECRET_FILE: /run/secrets/painfree_oidc_client_secret
+      PAINFREE_OIDC_REDIRECT_URI: ${PAINFREE_OIDC_REDIRECT_URI:-}
+      PAINFREE_OIDC_ROLES_CLAIM: ${PAINFREE_OIDC_ROLES_CLAIM:-roles}
+    # No painfree_custody_secret here, and that omission is the boundary.
+    secrets:
+      - painfree_database_url
+      - painfree_oidc_client_secret
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=4).status == 200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1g
+
+  worker:
+    image: ${PAINFREE_IMAGE}
+    command: ["worker"]
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PAINFREE_ROLE: worker
+      PAINFREE_ENVIRONMENT: production
+      PAINFREE_DATABASE_URL_FILE: /run/secrets/painfree_database_url
+      PAINFREE_KEY_ENCRYPTION_SECRET_FILE: /run/secrets/painfree_custody_secret
+      PAINFREE_LOG_LEVEL: ${PAINFREE_LOG_LEVEL:-INFO}
+      # The API migrates; a worker that also did would race it for no gain.
+      PAINFREE_MIGRATE_ON_STARTUP: "false"
+      # The worker serves no HTTP and authenticates nobody. The mode is here
+      # only so that its resolved configuration reads the same as the API's in
+      # the startup line; it declares no proxy, because it has none.
+      PAINFREE_AUTH_MODE: ${PAINFREE_AUTH_MODE:-}
+      PAINFREE_OIDC_ISSUER: ${PAINFREE_OIDC_ISSUER:-}
+      PAINFREE_OIDC_CLIENT_ID: ${PAINFREE_OIDC_CLIENT_ID:-}
+      PAINFREE_OIDC_REDIRECT_URI: ${PAINFREE_OIDC_REDIRECT_URI:-}
+    secrets:
+      - painfree_database_url
+      - painfree_custody_secret
+    # A worker serves no HTTP, so there is no probe that proves the loops are
+    # turning. This one proves the process is alive and its database is
+    # reachable and at the schema it expects — which is what the restart policy
+    # can actually act on. It is a liveness proxy and is documented as one.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; from painfree.config import load_settings; from painfree.db import build_engine, check_ready; sys.exit(0 if check_ready(build_engine(load_settings()))['ready'] else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1g
+
+  proxy:
+    # caddy:2.10-alpine, by digest. Terminates TLS and is the only service with
+    # a published port — the API is never exposed directly.
+    image: docker.io/library/caddy@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      PAINFREE_SITE_ADDRESS: ${PAINFREE_SITE_ADDRESS}
+    ports:
+      - "${PAINFREE_HTTP_BIND:-0.0.0.0:80}:80"
+      - "${PAINFREE_HTTPS_BIND:-0.0.0.0:443}:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro,z
+      # Certificates and the ACME account key. A named volume because losing it
+      # means re-issuing on every restart, and rate limits are real.
+      - painfree-caddy-data:/data
+      - painfree-caddy-config:/config
+    healthcheck:
+      test: ["CMD", "caddy", "version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512m
+
+secrets:
+  painfree_db_password:
+    file: ./deploy/secrets/db_password
+  # The whole SQLAlchemy URL, because the password is inside it.
+  painfree_database_url:
+    file: ./deploy/secrets/database_url
+  painfree_custody_secret:
+    file: ./deploy/secrets/custody_secret
+  painfree_oidc_client_secret:
+    file: ./deploy/secrets/oidc_client_secret
+
+volumes:
+  painfree-db-data:
+  painfree-caddy-data:
+  painfree-caddy-config:

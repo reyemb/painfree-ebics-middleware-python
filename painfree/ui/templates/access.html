@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}{{ t('access.title') }} — painfree{% endblock %}
+{% block body %}
+<h1>{{ t('access.heading') }}</h1>
+<p class="lede">{{ t('access.lede') }}</p>
+
+<p class="lede">{{ t('access.lede_no_user_list') }}</p>
+
+<p class="lede">{{ t('access.lede_oversight') }}</p>
+
+{% if oversight %}
+<div class="card">
+  <h2>{{ t('access.oversight_heading') }}</h2>
+  <p>{{ t('access.oversight_why') }}</p>
+  <ul>
+    {% for row in oversight %}
+    <li><a href="/ui/access/{{ row.subject }}"><code>{{ row.subject }}</code></a>
+        {% if row.display_name %}({{ row.display_name }}){% endif %}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{% if ungranted %}
+<div class="card">
+  <h2>{{ t('access.ungranted_heading') }}</h2>
+  <p>{{ t('access.ungranted_why') }}</p>
+  <ul>
+    {% for row in ungranted %}
+    <li><a href="/ui/access/{{ row.subject }}"><code>{{ row.subject }}</code></a>
+        {% if row.display_name %}({{ row.display_name }}){% endif %}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<div class="card">
+<h2>{{ t('access.known_subjects') }}</h2>
+{% if subjects %}
+<table>
+  <tr><th>{{ t('access.subject') }}</th><th>{{ t('access.name') }}</th>
+      <th>{{ t('access.last_seen') }}</th><th>{{ t('access.access') }}</th></tr>
+  {% for row in subjects %}
+  <tr>
+    {# The subject is the identity provider's `sub` claim, verbatim: an
+       identifier, never translated and never reformatted. #}
+    <td><a href="/ui/access/{{ row.subject }}"><code>{{ row.subject }}</code></a></td>
+    <td>{{ row.display_name or '—' }}</td>
+    <td>{{ row.last_seen_at | moment }}</td>
+    <td>
+      {% if row.oversight %}
+        <span class="tag viewer">oversight</span> {{ t('access.every_connection_readonly') }}{% if row.grants %}<br>{% endif %}
+      {% endif %}
+      {% if row.grants %}
+        {% for grant in row.grants %}
+          <a href="/ui/connections/{{ grant.connection_id }}/access"><code>{{ grant.connection_id }}</code></a>
+          <span class="tag {{ grant.level.value }}">{{ grant.level.value }}</span>{% if not loop.last %}<br>{% endif %}
+        {% endfor %}
+      {% elif not row.oversight %}
+        <span class="empty">{{ t('access.none') }}</span>
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="empty">{{ t('access.nobody') }}</p>
+{% endif %}
+</div>
+
+<div class="card">
+<h2>{{ t('nav.connections') }}</h2>
+<p>{{ t('access.other_way_round') }}</p>
+{% if connections %}
+<ul>
+  {% for row in connections %}
+  <li><a href="/ui/connections/{{ row.connection_id }}/access"><code>{{ row.connection_id }}</code></a></li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="empty">{{ t('access.no_connections') }}</p>
+{% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}{{ t('statements.title') }} — painfree{% endblock %}
+{% block body %}
+<h1>{{ t('statements.heading') }}</h1>
+<p class="lede">{{ t('statements.lede') }}</p>
+
+<form class="filters" method="get" action="/ui/statements">
+  <div><label for="connection_id">{{ t('common.connection') }}</label>
+    <select id="connection_id" name="connection_id">
+      <option value="">{{ t('common.every_connection') }}</option>
+      {% for row in connections %}
+      <option value="{{ row.connection_id }}" {{ 'selected' if row.connection_id == selected_connection else '' }}>{{ row.connection_id }}</option>
+      {% endfor %}
+    </select></div>
+  <div><label for="message_type">{{ t('statements.message_type') }}</label>
+    <select id="message_type" name="message_type">
+      <option value="">{{ t('statements.any_type') }}</option>
+      {% for value in message_types %}
+      <option value="{{ value }}" {{ 'selected' if value == selected_type else '' }}>{{ value }}</option>
+      {% endfor %}
+    </select></div>
+  <button type="submit" class="secondary">{{ t('common.filter') }}</button>
+</form>
+
+<div class="card">
+{% if statements %}
+<table>
+  <tr><th>{{ t('statements.statement') }}</th><th>{{ t('statements.type') }}</th>
+      <th>{{ t('statements.account') }}</th><th>{{ t('statements.reports_on') }}</th>
+      <th>{{ t('statements.entries') }}</th><th>{{ t('statements.closing_balance') }}</th>
+      <th>{{ t('order.ingested') }}</th></tr>
+  {% for row in statements %}
+  <tr>
+    <td><a href="/ui/statements/{{ row.statement_id }}"><code>{{ row.statement_id }}</code></a><br>
+        <small class="mono">{{ row.identification or '—' }}</small></td>
+    <td>{{ row.message_type }}</td>
+    <td class="mono">{{ row.iban or '—' }}</td>
+    <td>{% if row.order_id %}<a href="/ui/orders/{{ row.order_id }}"><code>{{ row.order_id }}</code></a>{% else %}—{% endif %}</td>
+    <td>{{ row.entry_count | count }}</td>
+    <td>{% if row.closing_balance is not none %}{{ row.closing_balance | amount(row.currency) }}{% else %}—{% endif %}</td>
+    <td>{{ row.ingested_at | moment }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="empty">{{ t('statements.empty') }}</p>
+{% endif %}
+</div>
+{% endblock %}

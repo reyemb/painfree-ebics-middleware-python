@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}{{ t('access.title') }} — {{ connection.connection_id }} — painfree{% endblock %}
+{% block body %}
+<h1>{{ t('connection_access.heading') }} <code>{{ connection.connection_id }}</code></h1>
+<p class="lede">{{ t('connection_access.lede') }}</p>
+
+{% if granted %}<p class="notice">{{ t('connection_access.granted') }} <code>{{ granted }}</code>.</p>{% endif %}
+{% if revoked %}<p class="notice">{{ t('connection_access.revoked') }} <code>{{ revoked }}</code>, {{ t('connection_access.revoked_when') }}</p>{% endif %}
+
+<div class="card">
+{% if grants %}
+<table>
+  <tr><th>{{ t('access.subject') }}</th><th>{{ t('subject.level') }}</th>
+      <th>{{ t('subject.carries') }}</th><th>{{ t('subject.granted_by') }}</th>
+      <th>{{ t('subject.since') }}</th><th></th></tr>
+  {% for grant in grants %}
+  <tr>
+    <td><a href="/ui/access/{{ grant.subject }}"><code>{{ grant.subject }}</code></a></td>
+    <td><span class="tag {{ grant.level.value }}">{{ grant.level.value }}</span></td>
+    <td><small class="mono">{{ grant.scopes() | join(', ') }}</small></td>
+    <td><code>{{ grant.granted_by }}</code></td>
+    <td>{{ grant.created_at | moment }}</td>
+    <td>
+      <form method="post" action="/ui/connections/{{ connection.connection_id }}/access/revoke">
+        <input type="hidden" name="subject" value="{{ grant.subject }}">
+        <input type="hidden" name="confirm" value="revoke">
+        <button type="submit">{{ t('subject.revoke') }}</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="empty">{{ t('connection_access.nobody') }}</p>
+{% endif %}
+</div>
+
+<div class="card">
+<h2>{{ t('connection_access.grant_access') }}</h2>
+<form method="post" action="/ui/connections/{{ connection.connection_id }}/access">
+  <label>{{ t('access.subject') }}
+    <input type="text" name="subject" list="known-subjects" required
+           placeholder="{{ t('connection_access.subject_placeholder') }}">
+  </label>
+  <datalist id="known-subjects">
+    {% for row in subjects %}
+    <option value="{{ row.subject }}">{{ row.display_name or '' }}</option>
+    {% endfor %}
+  </datalist>
+  <label>{{ t('subject.level') }}
+    <select name="level">
+      {% for level in levels %}
+      <option value="{{ level }}">{{ level }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <p><small>{{ t('connection_access.subject_note') }}</small></p>
+  <button type="submit">{{ t('subject.grant') }}</button>
+</form>
+</div>
+
+<p class="actions"><a href="/ui/connections/{{ connection.connection_id }}">{{ t('connection_access.back') }}</a>
+ &middot; <a href="/ui/access">{{ t('subject.all_users') }}</a></p>
+{% endblock %}

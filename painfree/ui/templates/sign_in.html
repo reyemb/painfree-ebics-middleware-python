@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}{{ t('sign_in.title') }} — painfree{% endblock %}
+{% block body %}
+<h1>{{ t('sign_in.heading') }}</h1>
+<p class="lede">{{ t('sign_in.lede') }}</p>
+
+{% if not accounts_exist %}
+{# The state a deployment is in between `migrate` and `create-admin`. Every
+   credential is refused, and a form that rejects everything with no
+   explanation is the same screen as a broken password. #}
+<div class="card">
+  <h2>{{ t('sign_in.no_accounts_heading') }}</h2>
+  <p>{{ t('sign_in.no_accounts') }}</p>
+  <pre class="json">python -m painfree create-admin &lt;name&gt;</pre>
+</div>
+{% endif %}
+
+<form class="stack card" method="post" action="/auth/login">
+  {% if error %}
+  <p class="empty" role="alert">{{ t('sign_in.refused') }}</p>
+  {% endif %}
+  <input type="hidden" name="next" value="{{ next }}">
+  <label>{{ t('sign_in.account') }}
+    <input type="text" name="subject" autocomplete="username" required autofocus></label>
+  <label>{{ t('sign_in.password') }}
+    <input type="password" name="password" autocomplete="current-password" required></label>
+  <div class="actions">
+    <button type="submit">{{ t('sign_in.submit') }}</button>
+  </div>
+</form>
+
+<p><small>{{ t('sign_in.throttled') }}</small></p>
+{% endblock %}

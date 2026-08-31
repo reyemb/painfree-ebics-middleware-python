@@ -1,0 +1,207 @@
+/* Material Design 3 design tokens: the colour system, the type scale, shape,
+   elevation and the state-layer opacities. Nothing in this file draws anything.
+
+   The four stylesheets are concatenated in filename order by
+   `painfree.ui.rendering` and inlined into every page -- see that module for
+   why the console serves no static file. They are separate because they answer
+   separate questions: what the values are (here), what an unstyled element
+   looks like (02), what the frame around a page looks like (03), and what the
+   things on a page look like (04).
+
+   THE COLOUR SYSTEM IS GENERATED, NOT PICKED. Each palette is a tonal ramp
+   computed in OKLCH at a fixed hue and chroma, gamut-mapped by reducing chroma
+   the way HCT does, and every pair used for text was measured against WCAG --
+   Tone numbers below are M3's: 0 is black, 100 is
+   white, and a role names a tone rather than a colour so the dark theme is a
+   different set of tones rather than an inverted light one.
+
+     primary    hue 264  chroma 0.155   the console's blue
+     secondary  hue 264  chroma 0.045   navigation, quiet emphasis
+     tertiary   hue 200  chroma 0.070   accents that must not read as primary
+     neutral    hue 264  chroma 0.006   surfaces and body text
+     variant    hue 264  chroma 0.018   outlines and secondary text
+     error      hue  27  chroma 0.170   the bank refused it
+     success    hue 150  chroma 0.110   it worked
+     warning    hue  75  chroma 0.130   look at this before it becomes an error
+
+   HOW THE THEME SWITCHES. Every colour role is declared twice: a plain light
+   value, then the same role as `light-dark()`. A browser that has `light-dark()`
+   takes the second and resolves it against the used `color-scheme`; one that
+   does not discards it and keeps the light value, which is a light console
+   rather than an unstyled one. Because `color-scheme` is the switch, the three
+   states need one declaration each and no component rule is ever written twice:
+
+     system (default)  :root has no data-theme, `color-scheme: light dark`
+     light             :root[data-theme="light"]  -> color-scheme: light
+     dark              :root[data-theme="dark"]   -> color-scheme: dark */
+
+:root {
+  color-scheme: light dark;
+
+  /* --- surfaces ---------------------------------------------------------- */
+  --pf-surface: #f7f9fe;
+  --pf-surface: light-dark(#f7f9fe, #121316);
+  --pf-surface-dim: #d8dade;
+  --pf-surface-dim: light-dark(#d8dade, #121316);
+  --pf-surface-bright: #f7f9fe;
+  --pf-surface-bright: light-dark(#f7f9fe, #38393c);
+  --pf-surface-lowest: #ffffff;
+  --pf-surface-lowest: light-dark(#ffffff, #0d0e11);
+  --pf-surface-low: #f1f4f8;
+  --pf-surface-low: light-dark(#f1f4f8, #1a1c1e);
+  --pf-surface-container: #eceef2;
+  --pf-surface-container: light-dark(#eceef2, #1e2023);
+  --pf-surface-high: #e6e8ec;
+  --pf-surface-high: light-dark(#e6e8ec, #282a2d);
+  --pf-surface-highest: #e0e2e7;
+  --pf-surface-highest: light-dark(#e0e2e7, #333538);
+  --pf-on-surface: #1a1c1e;
+  --pf-on-surface: light-dark(#1a1c1e, #e0e2e7);
+  --pf-on-surface-variant: #424751;
+  --pf-on-surface-variant: light-dark(#424751, #c1c7d3);
+  --pf-outline: #727782;
+  --pf-outline: light-dark(#727782, #8b919c);
+  --pf-outline-variant: #c1c7d3;
+  --pf-outline-variant: light-dark(#c1c7d3, #424751);
+  --pf-inverse-surface: #2f3034;
+  --pf-inverse-surface: light-dark(#2f3034, #e0e2e7);
+  --pf-inverse-on-surface: #eff1f5;
+  --pf-inverse-on-surface: light-dark(#eff1f5, #2f3034);
+  --pf-scrim: #000000;
+
+  /* --- primary ----------------------------------------------------------- */
+  --pf-primary: #2f57b5;
+  --pf-primary: light-dark(#2f57b5, #aac7ff);
+  --pf-on-primary: #ffffff;
+  --pf-on-primary: light-dark(#ffffff, #04227d);
+  --pf-primary-container: #d5e3ff;
+  --pf-primary-container: light-dark(#d5e3ff, #193d98);
+  --pf-on-primary-container: #000062;
+  --pf-on-primary-container: light-dark(#000062, #d5e3ff);
+
+  /* --- secondary: the navigation's colour -------------------------------- */
+  --pf-secondary: #515e78;
+  --pf-secondary: light-dark(#515e78, #b8c7e5);
+  --pf-on-secondary: #ffffff;
+  --pf-on-secondary: light-dark(#ffffff, #253047);
+  --pf-secondary-container: #d5e3ff;
+  --pf-secondary-container: light-dark(#d5e3ff, #3a475f);
+  --pf-on-secondary-container: #111b30;
+  --pf-on-secondary-container: light-dark(#111b30, #d5e3ff);
+
+  /* --- tertiary ---------------------------------------------------------- */
+  --pf-tertiary: #216a6e;
+  --pf-tertiary: light-dark(#216a6e, #8fd5d8);
+  --pf-on-tertiary: #ffffff;
+  --pf-on-tertiary: light-dark(#ffffff, #00383b);
+  --pf-tertiary-container: #abf1f5;
+  --pf-tertiary-container: light-dark(#abf1f5, #005155);
+  --pf-on-tertiary-container: #002123;
+  --pf-on-tertiary-container: light-dark(#002123, #abf1f5);
+
+  /* --- error: what the bank said no with --------------------------------- */
+  --pf-error: #89000a;
+  --pf-error: light-dark(#89000a, #ffafa5);
+  --pf-on-error: #ffffff;
+  --pf-on-error: light-dark(#ffffff, #610005);
+  --pf-error-container: #ffd8d3;
+  --pf-error-container: light-dark(#ffd8d3, #89000a);
+  --pf-on-error-container: #3c0002;
+  --pf-on-error-container: light-dark(#3c0002, #ffd8d3);
+
+  /* --- success and warning: painfree's own two semantic ramps ------------
+     Not M3 roles. The console has to say "the bank had nothing, which is
+     normal", "this is waiting for a human" and "this stopped" in three
+     distinguishable colours, and M3 ships one of the three. Built the same
+     way, so they behave identically across the two themes. */
+  --pf-success: #005624;
+  --pf-success: light-dark(#005624, #91dba1);
+  --pf-success-container: #adf8bc;
+  --pf-success-container: light-dark(#adf8bc, #003c17);
+  --pf-on-success-container: #00230a;
+  --pf-on-success-container: light-dark(#00230a, #adf8bc);
+  --pf-warning: #613f00;
+  --pf-warning: light-dark(#613f00, #f8ba5e);
+  --pf-warning-container: #ffddae;
+  --pf-warning-container: light-dark(#ffddae, #432b00);
+  --pf-on-warning-container: #281800;
+  --pf-on-warning-container: light-dark(#281800, #ffddae);
+
+  /* --- type scale --------------------------------------------------------
+     No web font. The console is opened over a VPN to read a six-digit return
+     code, and a byte it cannot fetch is a byte it cannot fail to fetch -- so
+     the M3 scale is applied to the platform's own faces. */
+  --pf-font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+             "Helvetica Neue", Arial, sans-serif;
+  --pf-font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
+  --pf-headline-large: 400 32px/40px var(--pf-font);
+  --pf-headline-medium: 400 28px/36px var(--pf-font);
+  --pf-headline-small: 400 24px/32px var(--pf-font);
+  --pf-title-large: 400 22px/28px var(--pf-font);
+  --pf-title-medium: 500 16px/24px var(--pf-font);
+  --pf-title-small: 500 14px/20px var(--pf-font);
+  --pf-body-large: 400 16px/24px var(--pf-font);
+  --pf-body-medium: 400 14px/20px var(--pf-font);
+  --pf-body-small: 400 12px/16px var(--pf-font);
+  --pf-label-large: 500 14px/20px var(--pf-font);
+  --pf-label-medium: 500 12px/16px var(--pf-font);
+  --pf-label-small: 500 11px/16px var(--pf-font);
+
+  /* --- shape -------------------------------------------------------------- */
+  --pf-corner-xs: 4px;
+  --pf-corner-sm: 8px;
+  --pf-corner-md: 12px;
+  --pf-corner-lg: 16px;
+  --pf-corner-xl: 28px;
+  --pf-corner-full: 999px;
+
+  /* --- spacing: a 4px grid ------------------------------------------------ */
+  --pf-space-1: 4px;
+  --pf-space-2: 8px;
+  --pf-space-3: 12px;
+  --pf-space-4: 16px;
+  --pf-space-5: 24px;
+  --pf-space-6: 32px;
+  --pf-space-7: 48px;
+
+  /* --- elevation ----------------------------------------------------------
+     M3's five levels. Two shadows each: a tight key light and a wide ambient
+     one. Dark surfaces get a stronger shadow because a shadow on a dark ground
+     carries almost no signal otherwise. */
+  --pf-shadow-key: rgba(0, 0, 0, .30);
+  --pf-shadow-key: light-dark(rgba(0, 0, 0, .30), rgba(0, 0, 0, .60));
+  --pf-shadow-ambient: rgba(0, 0, 0, .15);
+  --pf-shadow-ambient: light-dark(rgba(0, 0, 0, .15), rgba(0, 0, 0, .40));
+  --pf-elevation-0: none;
+  --pf-elevation-1: 0 1px 2px 0 var(--pf-shadow-key),
+                    0 1px 3px 1px var(--pf-shadow-ambient);
+  --pf-elevation-2: 0 1px 2px 0 var(--pf-shadow-key),
+                    0 2px 6px 2px var(--pf-shadow-ambient);
+  --pf-elevation-3: 0 4px 8px 3px var(--pf-shadow-ambient),
+                    0 1px 3px 0 var(--pf-shadow-key);
+
+  /* --- state layers -------------------------------------------------------
+     M3 draws interaction as a translucent layer of the *content* colour over
+     the container, rather than as a second background colour. One opacity per
+     state, so hover on a button and hover on a nav item are the same gesture. */
+  --pf-state-hover: .08;
+  --pf-state-focus: .10;
+  --pf-state-pressed: .10;
+
+  /* --- motion ------------------------------------------------------------- */
+  --pf-easing: cubic-bezier(.2, 0, 0, 1);
+  --pf-duration-short: 100ms;
+  --pf-duration-medium: 200ms;
+
+  /* --- layout ------------------------------------------------------------- */
+  --pf-drawer-width: 264px;
+  --pf-app-bar-height: 64px;
+  --pf-reading-width: 1120px;
+}
+
+/* The two explicit choices. `color-scheme` is the whole switch: every role
+   above resolves through `light-dark()` against it, so a theme change is two
+   properties rather than a second copy of the palette. */
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }

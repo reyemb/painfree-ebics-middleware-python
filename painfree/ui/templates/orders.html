@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% import "_bank.html" as bank with context %}
+{% block title %}{{ t('orders.title') }} — painfree{% endblock %}
+{% block body %}
+<h1>{{ t('orders.heading') }}</h1>
+{# `submitted`, `rejected` and `failed` are the contract's own state values and
+   are shown untranslated beside the sentence that explains them: an operator
+   reading a webhook and an operator reading this page have to be looking at
+   one word. #}
+<p class="lede">{{ t('orders.lede') }}</p>
+
+<form class="filters" method="get" action="/ui/orders">
+  <div><label for="connection_id">{{ t('common.connection') }}</label>
+    <select id="connection_id" name="connection_id">
+      <option value="">{{ t('common.every_connection') }}</option>
+      {% for row in connections %}
+      <option value="{{ row.connection_id }}" {{ 'selected' if row.connection_id == selected_connection else '' }}>{{ row.connection_id }}</option>
+      {% endfor %}
+    </select></div>
+  <div><label for="state">{{ t('common.state') }}</label>
+    <select id="state" name="state">
+      <option value="">{{ t('common.any_state') }}</option>
+      {% for value in states %}
+      <option value="{{ value }}" {{ 'selected' if value == selected_state else '' }}>{{ value }}</option>
+      {% endfor %}
+    </select></div>
+  <button type="submit" class="secondary">{{ t('common.filter') }}</button>
+</form>
+
+<div class="card">
+{% if orders %}
+<table>
+  <tr><th>{{ t('orders.order') }}</th><th>{{ t('common.connection') }}</th>
+      <th>{{ t('common.state') }}</th><th>{{ t('orders.scheme') }}</th>
+      <th>{{ t('orders.return_code') }}</th>
+      <th>{{ t('orders.report_text') }}</th><th>{{ t('orders.accepted') }}</th></tr>
+  {% for row in orders %}
+  <tr>
+    <td><a href="/ui/orders/{{ row.order_id }}"><code>{{ row.order_id }}</code></a></td>
+    <td><code>{{ row.connection_id }}</code></td>
+    <td><span class="tag {{ row.state.value }}">{{ row.state.value }}</span><br>
+        <small>{{ t('state.' ~ row.state.value) }}</small></td>
+    <td><code>{{ row.scheme.value }}</code>
+        {% if row.downgraded %}<br><span class="tag failed">{{ t('order.downgraded') }}</span>{% endif %}</td>
+    <td>{% if row.return_code %}<code>{{ row.return_code }}</code>{% else %}—{% endif %}</td>
+    <td>{% if row.report_text %}{{ bank.quiet(row.report_text) }}{% else %}—{% endif %}</td>
+    <td>{{ row.accepted_at | moment }}</td>
+  </tr>
+  {% endfor %}
+</table>
+<p class="hint">{{ t('bank.note') }}</p>
+{% else %}
+<p class="empty">{{ t('orders.empty') }}</p>
+{% endif %}
+</div>
+{% endblock %}

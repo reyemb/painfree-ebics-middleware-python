@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}{{ t('webhook_new.title') }} — painfree{% endblock %}
+{% block body %}
+<h1>{{ t('webhook_new.heading') }}</h1>
+<p class="lede">{{ t('webhook_new.lede') }}</p>
+
+<form class="stack" method="post" action="/ui/webhooks">
+  {# Minted when this page was rendered, not when it is submitted. A reload of
+     the result replays this registration instead of making a second one. #}
+  <input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
+
+  <label for="url">{{ t('webhook_new.url') }}
+    <span class="hint">{{ t('webhook_new.url_hint') }}</span>
+  </label>
+  <input type="url" id="url" name="url" required class="mono"
+         value="{{ values.url | default('') }}" placeholder="https://your-system.example/painfree/events">
+
+  <label for="description">{{ t('webhook_new.description') }}
+    <span class="hint">{{ t('webhook_new.description_hint') }}</span>
+  </label>
+  <input type="text" id="description" name="description"
+         value="{{ values.description | default('') }}" placeholder="Ledger ingest (production)">
+
+  <label for="connection_id">{{ t('common.connection') }}
+    <span class="hint">{{ t('webhook_new.connection_hint') }}</span>
+  </label>
+  <select id="connection_id" name="connection_id">
+    <option value="">{{ t('common.every_connection') }}</option>
+    {% for row in connections %}
+    <option value="{{ row.connection_id }}">{{ row.connection_id }}</option>
+    {% endfor %}
+  </select>
+
+  {# The event types are the webhook envelope's own contract values. They are
+     names a receiver matches on and are never translated. #}
+  <label>{{ t('webhook_new.event_types') }}
+    <span class="hint">{{ t('webhook_new.event_types_hint') }}</span>
+  </label>
+  <div class="card">
+  {% for name in event_types %}
+    <div>
+      <label class="plainlabel">
+        <input type="checkbox" name="event:{{ name }}" value="1"
+               {{ 'checked' if name.startswith('order.') else '' }}>
+        <code>{{ name }}</code>
+      </label>
+    </div>
+  {% endfor %}
+  </div>
+
+  <div class="actions">
+    <button type="submit">{{ t('webhook_new.submit') }}</button>
+    <a class="button secondary" href="/ui/webhooks">{{ t('common.cancel') }}</a>
+  </div>
+</form>
+{% endblock %}

@@ -1,0 +1,427 @@
+/* The frame every page sits in: the app bar, the navigation drawer, the two
+   disclosure menus on the right, and the theme toggle.
+
+   TWO THINGS ARE DELIBERATE AND EASY TO UNDO BY ACCIDENT.
+
+   The drawer's narrow-viewport disclosure is a checkbox and a label, not a
+   script. It is the one piece of chrome a phone cannot do without, and a
+   console whose navigation needs JavaScript to appear is a console that has no
+   navigation when a corporate proxy strips a script.
+
+   The notifications panel and the profile menu are `<details>` elements. Same
+   reason, plus a `<summary>` is a real disclosure button for a keyboard and a
+   screen reader without anybody writing `role`, `tabindex` and an Escape
+   handler and getting one of the three wrong.
+
+   The theme toggle is the only control here that needs JavaScript, and it is
+   hidden until a script says so -- `:root[data-js]` is set by the same inline
+   script that applies the stored theme. A control that cannot work is worse
+   than a control that is not offered. */
+
+/* --- skip link ------------------------------------------------------------ */
+
+.pf-skip {
+  position: absolute;
+  left: var(--pf-space-2);
+  top: -100px;
+  z-index: 30;
+  padding: var(--pf-space-2) var(--pf-space-4);
+  border-radius: var(--pf-corner-sm);
+  background: var(--pf-primary-container);
+  color: var(--pf-on-primary-container);
+  font: var(--pf-label-large);
+  text-decoration: none;
+}
+.pf-skip:focus { top: var(--pf-space-2); }
+
+/* --- app bar --------------------------------------------------------------
+   M3 top app bar, small. Icon at the very left, then the name; on the right,
+   right to left: profile, notifications, theme toggle. That order is the
+   user's and is expressed in the DOM, not by float. */
+
+.pf-app-bar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: var(--pf-space-2);
+  height: var(--pf-app-bar-height);
+  padding: 0 var(--pf-space-3) 0 var(--pf-space-4);
+  background: var(--pf-surface-container);
+  color: var(--pf-on-surface);
+  border-bottom: 1px solid var(--pf-outline-variant);
+}
+
+.pf-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--pf-space-3);
+  color: inherit;
+  text-decoration: none;
+  border-radius: var(--pf-corner-sm);
+  padding: var(--pf-space-1) var(--pf-space-2);
+  margin-left: calc(-1 * var(--pf-space-2));
+}
+.pf-brand .pf-logo { display: block; width: 28px; height: 28px; flex: none; }
+.pf-brand-name { font: var(--pf-title-large); letter-spacing: -.01em; }
+.pf-brand-sub {
+  font: var(--pf-label-medium);
+  color: var(--pf-on-surface-variant);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.pf-app-bar-spacer { flex: 1 1 auto; }
+
+/* Not positioned: the two menu panels hang off the app bar's own right edge,
+   which is a sticky element and therefore their containing block. Anchoring
+   them to this row instead would open them four pixels above the app bar's
+   bottom border. */
+.pf-app-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--pf-space-1);
+}
+
+/* --- icon button ----------------------------------------------------------
+   40px target, circular state layer, drawn with `currentColor` so one SVG
+   works in both themes. */
+
+.pf-icon-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex: none;
+  padding: 0;
+  border: none;
+  border-radius: var(--pf-corner-full);
+  background: transparent;
+  color: var(--pf-on-surface-variant);
+  cursor: pointer;
+  list-style: none;
+  transition: background-color var(--pf-duration-short) var(--pf-easing);
+}
+.pf-icon-button::-webkit-details-marker { display: none; }
+.pf-icon-button svg { width: 22px; height: 22px; display: block; }
+.pf-nav-button span { display: block; }
+.pf-icon-button:hover {
+  background: color-mix(in srgb, currentColor calc(var(--pf-state-hover) * 100%), transparent);
+}
+
+/* --- the navigation switch (narrow viewports only) ------------------------
+   The input is off screen and still focusable, so the ring has to be drawn on
+   the label the reader can actually see. */
+
+.pf-nav-switch:focus-visible + .pf-app-bar .pf-nav-button {
+  outline: 3px solid var(--pf-primary);
+  outline-offset: 2px;
+}
+/* On a wide viewport the drawer is furniture and the switch means nothing, so
+   it leaves the tab order with its label rather than staying as an invisible
+   stop a keyboard lands on and cannot see. `display: none` rather than
+   `visibility`, so it is out of the accessibility tree too. */
+.pf-nav-switch { display: none; }
+.pf-nav-button { display: none; }
+.pf-nav-button .pf-icon-close { display: none; }
+.pf-nav-switch:checked + .pf-app-bar .pf-nav-button .pf-icon-close { display: block; }
+.pf-nav-switch:checked + .pf-app-bar .pf-nav-button .pf-icon-menu { display: none; }
+
+/* --- disclosure menus: notifications and profile -------------------------- */
+
+.pf-menu { position: static; }
+.pf-menu > summary { list-style: none; }
+.pf-menu[open] > summary { background: var(--pf-surface-highest); }
+
+.pf-menu-panel {
+  position: absolute;
+  top: 100%;
+  right: var(--pf-space-3);
+  z-index: 25;
+  width: min(360px, calc(100vw - 2 * var(--pf-space-3)));
+  max-height: min(70vh, 560px);
+  overflow-y: auto;
+  padding: var(--pf-space-3);
+  border-radius: var(--pf-corner-md);
+  border: 1px solid var(--pf-outline-variant);
+  background: var(--pf-surface-high);
+  color: var(--pf-on-surface);
+  box-shadow: var(--pf-elevation-2);
+  font: var(--pf-body-medium);
+}
+.pf-menu-panel h2 {
+  font: var(--pf-title-small);
+  margin: 0 0 var(--pf-space-2);
+  text-transform: none;
+  letter-spacing: 0;
+}
+.pf-menu-panel p { margin: 0 0 var(--pf-space-2); color: var(--pf-on-surface-variant); }
+.pf-menu-panel p:last-child { margin-bottom: 0; }
+
+/* --- the notification badge ----------------------------------------------
+   A count, not a dot: an operator wants to know whether it is one parked
+   endpoint or eleven before deciding to open it. */
+
+.pf-badge {
+  position: absolute;
+  top: 2px;
+  right: 0;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--pf-corner-full);
+  background: var(--pf-error);
+  color: var(--pf-on-error);
+  font: var(--pf-label-small);
+  line-height: 18px;
+  text-align: center;
+}
+
+.pf-alerts { list-style: none; margin: 0; padding: 0; }
+.pf-alerts li { margin: 0; }
+.pf-alert {
+  display: flex;
+  gap: var(--pf-space-3);
+  align-items: flex-start;
+  margin: 0 0 var(--pf-space-1);
+  padding: var(--pf-space-2) var(--pf-space-3);
+  border-radius: var(--pf-corner-sm);
+  background: var(--pf-surface-container);
+  text-decoration: none;
+  color: inherit;
+}
+.pf-alert:hover { background: var(--pf-surface-lowest); }
+.pf-alert-count {
+  flex: none;
+  min-width: 28px;
+  height: 24px;
+  padding: 0 var(--pf-space-2);
+  border-radius: var(--pf-corner-full);
+  font: var(--pf-label-large);
+  line-height: 24px;
+  text-align: center;
+  background: var(--pf-surface-highest);
+  color: var(--pf-on-surface);
+}
+.pf-alert-bad .pf-alert-count { background: var(--pf-error-container); color: var(--pf-on-error-container); }
+.pf-alert-warn .pf-alert-count { background: var(--pf-warning-container); color: var(--pf-on-warning-container); }
+.pf-alert-title { font: var(--pf-label-large); display: block; }
+.pf-alert-why { font: var(--pf-body-small); color: var(--pf-on-surface-variant); display: block; }
+
+/* --- the language chooser -------------------------------------------------
+   Six links in the same disclosure the bell and the profile use, so the whole
+   chooser is HTML: no route to post to, no script to act on a choice, and it
+   still works when scripting is off -- which the theme toggle above it is the
+   only control in this console permitted not to do.
+
+   The code beside the globe is the current language, so an operator can see
+   which one they are in without opening anything. It is a language tag rather
+   than a flag: a flag is a country, several of these languages are spoken in
+   many, and none of them is spoken in only one. */
+
+.pf-language > summary { gap: var(--pf-space-1); width: auto; padding: 0 var(--pf-space-2); }
+.pf-lang-code { font: var(--pf-label-medium); letter-spacing: .04em; }
+.pf-lang-list { list-style: none; margin: 0 0 var(--pf-space-2); padding: 0; }
+.pf-lang-list li { margin: 0; }
+.pf-lang-list a {
+  display: flex;
+  gap: var(--pf-space-3);
+  align-items: center;
+  margin: 0 0 var(--pf-space-1);
+  padding: var(--pf-space-2) var(--pf-space-3);
+  border-radius: var(--pf-corner-sm);
+  background: var(--pf-surface-container);
+  text-decoration: none;
+  color: inherit;
+  font: var(--pf-label-large);
+}
+.pf-lang-list a:hover { background: var(--pf-surface-lowest); }
+.pf-lang-list a[aria-current] {
+  background: var(--pf-primary-container);
+  color: var(--pf-on-primary-container);
+}
+.pf-lang-tag {
+  flex: none;
+  min-width: 28px;
+  height: 24px;
+  padding: 0 var(--pf-space-2);
+  border-radius: var(--pf-corner-full);
+  background: var(--pf-surface-highest);
+  font: var(--pf-label-large);
+  line-height: 24px;
+  text-align: center;
+}
+.pf-lang-list a[aria-current] .pf-lang-tag {
+  background: var(--pf-surface-lowest);
+  color: var(--pf-on-surface);
+}
+.pf-lang-note { font: var(--pf-body-small); }
+
+/* --- profile -------------------------------------------------------------- */
+
+.pf-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--pf-corner-full);
+  background: var(--pf-primary-container);
+  color: var(--pf-on-primary-container);
+  font: var(--pf-label-large);
+  letter-spacing: .02em;
+}
+.pf-avatar:hover { background: var(--pf-primary-container); filter: brightness(.96); }
+.pf-profile-subject {
+  font-family: var(--pf-font-mono);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+/* --- theme toggle: an M3 segmented button, three states ------------------- */
+
+.pf-theme-toggle { display: none; }
+:root[data-js] .pf-theme-toggle { display: inline-flex; }
+
+.pf-theme-toggle {
+  align-items: center;
+  border: 1px solid var(--pf-outline);
+  border-radius: var(--pf-corner-full);
+  overflow: hidden;
+  height: 36px;
+}
+.pf-seg {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--pf-space-1);
+  height: 100%;
+  padding: 0 var(--pf-space-3);
+  border: none;
+  border-left: 1px solid var(--pf-outline);
+  background: transparent;
+  color: var(--pf-on-surface-variant);
+  font: var(--pf-label-medium);
+  cursor: pointer;
+  transition: background-color var(--pf-duration-short) var(--pf-easing);
+}
+.pf-seg:first-child { border-left: none; }
+.pf-seg svg { width: 18px; height: 18px; display: block; }
+.pf-seg:hover {
+  background: color-mix(in srgb, currentColor calc(var(--pf-state-hover) * 100%), transparent);
+}
+.pf-seg[aria-pressed="true"] {
+  background: var(--pf-secondary-container);
+  color: var(--pf-on-secondary-container);
+}
+.pf-seg-label { display: none; }
+@media (min-width: 1100px) { .pf-seg-label { display: inline; } }
+
+/* --- the shell: drawer beside the page ------------------------------------ */
+
+.pf-shell {
+  display: flex;
+  align-items: stretch;
+  min-height: calc(100vh - var(--pf-app-bar-height));
+  gap: 0;
+}
+
+.pf-drawer {
+  flex: none;
+  width: var(--pf-drawer-width);
+  background: var(--pf-surface-low);
+  border-right: 1px solid var(--pf-outline-variant);
+}
+.pf-drawer-inner {
+  position: sticky;
+  top: var(--pf-app-bar-height);
+  max-height: calc(100vh - var(--pf-app-bar-height));
+  overflow-y: auto;
+  padding: var(--pf-space-3) var(--pf-space-3) var(--pf-space-6);
+}
+
+.pf-drawer-heading {
+  font: var(--pf-title-small);
+  color: var(--pf-on-surface-variant);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  margin: var(--pf-space-4) 0 var(--pf-space-1);
+  padding: 0 var(--pf-space-4);
+}
+.pf-drawer-heading:first-child { margin-top: var(--pf-space-1); }
+
+.pf-nav { list-style: none; margin: 0; padding: 0; }
+.pf-nav li { margin: 0; }
+
+/* The M3 navigation drawer item: a 56px pill, the active one filled with the
+   secondary container. Both themes measured against their label colour. */
+.pf-nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--pf-space-3);
+  height: 56px;
+  padding: 0 var(--pf-space-4);
+  border-radius: var(--pf-corner-full);
+  color: var(--pf-on-surface-variant);
+  font: var(--pf-label-large);
+  text-decoration: none;
+  transition: background-color var(--pf-duration-short) var(--pf-easing);
+}
+.pf-nav-item svg { width: 22px; height: 22px; flex: none; }
+.pf-nav-item:hover {
+  background: color-mix(in srgb, var(--pf-on-surface) calc(var(--pf-state-hover) * 100%), transparent);
+  text-decoration: none;
+}
+.pf-nav-item[aria-current="page"] {
+  background: var(--pf-secondary-container);
+  color: var(--pf-on-secondary-container);
+  font-weight: 600;
+}
+.pf-nav-count {
+  margin-left: auto;
+  min-width: 22px;
+  padding: 0 var(--pf-space-2);
+  border-radius: var(--pf-corner-full);
+  background: var(--pf-error);
+  color: var(--pf-on-error);
+  font: var(--pf-label-small);
+  line-height: 20px;
+  text-align: center;
+}
+
+main {
+  flex: 1 1 auto;
+  min-width: 0;                       /* or a wide table stretches the column */
+  max-width: var(--pf-reading-width);
+  padding: var(--pf-space-5) var(--pf-space-5) var(--pf-space-7);
+  margin: 0 auto;
+}
+
+/* --- narrow viewports -----------------------------------------------------
+   Under 900px the drawer stops being furniture and becomes a disclosure. It
+   opens *in flow*, above the page rather than over it: nothing to dismiss,
+   nothing to trap focus in, and the page is still there underneath when it is
+   closed again. */
+
+@media (max-width: 899px) {
+  .pf-nav-switch { display: block; }
+  .pf-nav-button { display: inline-flex; }
+  .pf-brand-sub { display: none; }
+  .pf-shell { display: block; }
+  .pf-drawer { display: none; }
+  .pf-nav-switch:checked ~ .pf-shell .pf-drawer {
+    display: block;
+    width: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--pf-outline-variant);
+  }
+  .pf-drawer-inner { position: static; max-height: none; overflow: visible; }
+  main { padding: var(--pf-space-4) var(--pf-space-4) var(--pf-space-7); }
+  .pf-app-bar { padding-left: var(--pf-space-2); }
+  .pf-brand { margin-left: 0; }
+}
+
+@media (max-width: 599px) {
+  .pf-brand-name { font: var(--pf-title-medium); }
+  .pf-seg { padding: 0 var(--pf-space-2); }
+}

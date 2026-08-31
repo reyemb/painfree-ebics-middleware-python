@@ -1,0 +1,123 @@
+# Publish painfree to PyPI when a version tag is pushed.
+#
+# Three jobs, in this order, because the expensive check is not the one that
+# has to run first: `build` refuses a tag that disagrees with the version in
+# the package, `test` runs the suite on every Python the package claims to
+# support, and only then does `publish` upload the artefacts `build` produced.
+# Nothing is rebuilt for the upload -- what was checked is what is published.
+#
+# There is no API token anywhere in this file or in this repository's secrets.
+# The upload authenticates with a short-lived OpenID Connect token minted for
+# this workflow run, which is why `publish` is the only job with
+# `id-token: write` and why it does nothing else: whatever else that job ran
+# would be running next to a credential that can write to the index.
+#
+# Before the first release, PyPI needs a trusted publisher configured for this
+# repository, this workflow file name and the `pypi` environment. Until then
+# the upload step is the one part of this that no local check can exercise.
+
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+# Read-only by default. The one job that needs more says so itself.
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # The version the package is built and tested with here. Other jobs read the
+  # version out of the package itself; this is only the interpreter.
+  DEFAULT_PYTHON: "3.12"
+
+jobs:
+  build:
+    name: build the artefacts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          python-version: ${{ env.DEFAULT_PYTHON }}
+
+      # First, and before anything is built: a tag that says one version and a
+      # package that says another is how the wrong artefact reaches an index,
+      # and an index does not give a version number back.
+      - name: The tag has to be the version the package claims
+        run: python scripts/check_release_tag.py "${GITHUB_REF_NAME}"
+
+      - name: Build the source distribution and the wheel
+        run: uv build
+
+      - name: The artefacts have to carry that version too
+        run: python scripts/check_release_tag.py "${GITHUB_REF_NAME}" --dist dist
+
+      - name: Check the metadata the way the index will
+        run: uvx --from twine twine check --strict dist/*
+
+      # A wheel that imports in the tree that built it proves nothing. This
+      # installs it where the source directory is not, so an import that only
+      # worked because the checkout was on the path fails here.
+      - name: Install the wheel somewhere clean and run it
+        run: |
+          uv venv --python "${DEFAULT_PYTHON}" /tmp/clean
+          uv pip install --python /tmp/clean/bin/python dist/*.whl
+          cd /tmp
+          /tmp/clean/bin/python -c "import painfree; print(painfree.__version__)"
+          /tmp/clean/bin/painfree --help > /dev/null
+          test "$(/tmp/clean/bin/python -c 'import painfree; print(painfree.__version__)')" \
+             = "${GITHUB_REF_NAME#v}"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: distributions
+          path: dist/*
+          if-no-files-found: error
+
+  test:
+    name: tests on python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Run the suite
+        run: uv run --extra dev --python ${{ matrix.python }} pytest
+
+  publish:
+    name: publish to PyPI
+    needs: [build, test]
+    runs-on: ubuntu-latest
+    # The only job that can mint a token the index will accept, and it does
+    # nothing but download what was already built and hand it over.
+    permissions:
+      id-token: write
+    environment:
+      name: pypi
+      url: https://pypi.org/p/painfree
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: distributions
+          path: dist
+
+      # Pinned by commit, not by tag: a tag is a name its owner can move, and
+      # this action runs in the job that holds the credential.
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          attestations: true
+          print-hash: true

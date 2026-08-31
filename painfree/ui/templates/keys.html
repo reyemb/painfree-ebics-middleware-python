@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% import "_jobs.html" as parts with context %}
+{% import "_bank.html" as bank with context %}
+{% block title %}{{ t('keys.title') }} — {{ connection.connection_id }} — painfree{% endblock %}
+{% block head %}
+{# No JavaScript anywhere in this console. A job the worker is still running is
+   waited for with a plain refresh, which works with scripting turned off. #}
+{% if outstanding %}<meta http-equiv="refresh" content="2">{% endif %}
+{% endblock %}
+{% block body %}
+<h1>{{ t('keys.heading') }} — <code>{{ connection.connection_id }}</code></h1>
+<p class="lede">
+  <span class="tag {{ connection.key_state.value }}">{{ connection.key_state.value }}</span>
+  {{ t('key_state.' ~ connection.key_state.value) }}.
+  {{ t('keys.lede') }}
+</p>
+
+{% if outstanding %}
+<div class="card">
+  <strong>{{ t('keys.waiting') }}</strong>: <code>{{ outstanding.action.value }}</code>,
+  {{ t('keys.requested_by', who=outstanding.requested_by_id,
+        when=outstanding.created_at | moment) }}
+  {{ t('keys.refreshes') }}
+</div>
+{% elif watched %}
+<div class="card {{ 'good' if watched.state.value == 'done' else 'bad' }}">
+  <strong><code>{{ watched.action.value }}</code> {{ watched.state.value }}.</strong>
+  {% if watched.return_code %} {{ t('keys.bank_answered') }} <code>{{ watched.return_code }}</code>
+    {{ bank.quiet(watched.report_text) }}{% endif %}
+  {% if watched.last_error %}<br><span class="mono">{{ watched.last_error }}</span>{% endif %}
+  {% if watched.result %}<pre class="json">{{ watched.result | pretty_json }}</pre>{% endif %}
+</div>
+{% endif %}
+
+{% if staged %}
+<div class="card warn">
+  <strong>{{ t('keys.staged') }}</strong>
+  {{ t('keys.staged_why') }}
+  <p class="actions"><a class="button" href="/ui/connections/{{ connection.connection_id }}/keys/bank-keys">{{ t('keys.open_comparison') }}</a></p>
+</div>
+{% endif %}
+
+<ol class="steps">
+
+<li class="{{ 'done' if subscriber_keys else 'now' }}">
+  <div class="title">1 &nbsp; {{ t('keys.step1') }}</div>
+  <div class="body">{{ t('keys.step1_body') }}</div>
+  {% if subscriber_keys %}
+    {{ parts.key_table(subscriber_keys) }}
+  {% elif may('connections:write') and available.create_keys and not outstanding %}
+    <form class="stack" method="post" action="/ui/connections/{{ connection.connection_id }}/keys/create_keys">
+      <label>{{ t('keys.common_name') }}<span class="hint">{{ t('keys.common_name_hint') }}</span>
+        <input type="text" name="common_name" placeholder="{{ connection.user_id }}"></label>
+      <label>{{ t('keys.organisation') }}<input type="text" name="organisation" placeholder="{{ connection.partner_id }}"></label>
+      <label>{{ t('keys.country') }}<input type="text" name="country" maxlength="2" placeholder="CH"></label>
+      <div class="actions"><button type="submit">{{ t('keys.generate') }}</button></div>
+    </form>
+  {% endif %}
+</li>
+
+<li class="{{ 'done' if connection.ini_sent else ('now' if available.send_ini and subscriber_keys else '') }}">
+  <div class="title">2 &nbsp; {{ t('keys.step2') }}</div>
+  <div class="body">{{ t('keys.step2_body') }}</div>
+  {% if connection.ini_sent %}
+    <p>{{ t('keys.sent_order_id') }} <code>{{ connection.ini_order_id or '—' }}</code>.</p>
+  {% elif may('connections:write') and available.send_ini and subscriber_keys and not outstanding %}
+    <form method="post" action="/ui/connections/{{ connection.connection_id }}/keys/send_ini">
+      <div class="actions"><button type="submit">{{ t('keys.send_ini') }}</button></div>
+    </form>
+  {% endif %}
+</li>
+
+<li class="{{ 'done' if connection.hia_sent else ('now' if available.send_hia else '') }}">
+  <div class="title">3 &nbsp; {{ t('keys.step3') }}</div>
+  <div class="body">{{ t('keys.step3_body') }}</div>
+  {% if connection.hia_sent %}
+    <p>{{ t('keys.sent_order_id') }} <code>{{ connection.hia_order_id or '—' }}</code>.</p>
+  {% elif may('connections:write') and available.send_hia and not outstanding %}
+    <form method="post" action="/ui/connections/{{ connection.connection_id }}/keys/send_hia">
+      <div class="actions"><button type="submit">{{ t('keys.send_hia') }}</button></div>
+    </form>
+  {% endif %}
+</li>
+
+<li class="{{ 'done' if connection.key_state.value in ('bank_keys_received', 'ready') else '' }}">
+  <div class="title">4 &nbsp; {{ t('keys.step4') }}</div>
+  <div class="body">{{ t('keys.step4_body') }}</div>
+  {% if subscriber_keys %}
+  <p class="actions"><a class="button secondary" href="/ui/connections/{{ connection.connection_id }}/letter">{{ t('keys.open_letter') }}</a></p>
+  {% endif %}
+</li>
+
+<li class="{{ 'done' if bank_keys else ('now' if available.fetch_hpb else '') }}">
+  <div class="title">5 &nbsp; {{ t('keys.step5') }}</div>
+  <div class="body">{{ t('keys.step5_body') }}</div>
+  {% if may('connections:write') and available.fetch_hpb and not outstanding %}
+    <form method="post" action="/ui/connections/{{ connection.connection_id }}/keys/fetch_hpb">
+      <div class="actions"><button type="submit" class="{{ 'secondary' if bank_keys else '' }}">
+        {{ t('keys.fetch_hpb_again') if bank_keys else t('keys.fetch_hpb') }}</button></div>
+    </form>
+  {% endif %}
+</li>
+
+<li class="{{ 'done' if connection.initialised and not staged else ('now' if staged else '') }}">
+  <div class="title">6 &nbsp; {{ t('keys.step6') }}</div>
+  <div class="body">{{ t('keys.step6_body') }}</div>
+  {% if staged %}
+    <p class="actions"><a class="button" href="/ui/connections/{{ connection.connection_id }}/keys/bank-keys">{{ t('keys.open_comparison') }}</a></p>
+  {% elif connection.bank_fingerprints %}
+    <p>{{ t('keys.confirmed') }}</p>
+    <table class="plain">
+      {% for role, value in connection.bank_fingerprints.items() %}
+      <tr><td>{{ role }}</td><td class="mono">{{ value | fingerprint }}</td></tr>
+      {% endfor %}
+    </table>
+  {% endif %}
+</li>
+</ol>
+
+{% if may('connections:write') and subscriber_keys %}
+<h2>{{ t('keys.renewal') }}</h2>
+<div class="card">
+  <p>{{ t('keys.renewal_body') }}</p>
+  <form class="stack" method="post" action="/ui/connections/{{ connection.connection_id }}/keys/renew_key">
+    <label>{{ t('keys.renew') }}<select name="version">
+      {% for version in versions %}<option value="{{ version }}">{{ version }}</option>{% endfor %}
+    </select></label>
+    <div class="actions"><button type="submit" class="secondary"
+      {{ 'disabled' if outstanding or not available.renew_key else '' }}>{{ t('keys.renew_button') }}</button></div>
+  </form>
+  <form class="stack" method="post" action="/ui/connections/{{ connection.connection_id }}/keys/suspend_keys">
+    <label>{{ t('keys.suspend') }}<select name="version">
+      <option value="">{{ t('keys.every_key') }}</option>
+      {% for version in versions %}<option value="{{ version }}">{{ version }}</option>{% endfor %}
+    </select></label>
+    <label>{{ t('keys.reason') }}<span class="hint">{{ t('keys.reason_hint') }}</span>
+      <input type="text" name="reason" required placeholder="{{ t('keys.reason_placeholder') }}"></label>
+    <div class="actions"><button type="submit" class="danger"
+      {{ 'disabled' if outstanding else '' }}>{{ t('keys.suspend_button') }}</button></div>
+  </form>
+</div>
+{% endif %}
+
+<h2>{{ t('keys.operations') }}</h2>
+<div class="card">{{ parts.job_table(jobs) }}</div>
+{% endblock %}

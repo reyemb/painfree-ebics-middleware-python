@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}{{ subject }} — {{ t('access.title') }} — painfree{% endblock %}
+{% block body %}
+<h1>{{ t('subject.heading') }} <code>{{ subject }}</code></h1>
+<p class="lede">{{ t('subject.lede') }}</p>
+
+{% if granted == 'oversight' %}<p class="notice">{{ t('subject.granted_oversight') }}</p>
+{% elif granted %}<p class="notice">{{ t('subject.granted') }} <code>{{ granted }}</code>.</p>{% endif %}
+{% if revoked == 'oversight' %}<p class="notice">{{ t('subject.revoked_oversight') }}</p>
+{% elif revoked %}<p class="notice">{{ t('subject.revoked') }} <code>{{ revoked }}</code>. {{ t('subject.revoked_when') }}</p>{% endif %}
+
+<div class="card">
+<h2>{{ t('access.oversight_heading') }}</h2>
+{% if oversight %}
+<p>{{ t('subject.holds_oversight') }} <code>{{ oversight.granted_by }}</code>,
+{{ oversight.created_at | moment }}.</p>
+{# The scope names are the authorisation model's own vocabulary, generated from
+   `painfree.identity`. They are matched on by code and are never translated. #}
+<p><small class="mono">{{ oversight_scopes | join(', ') }}</small></p>
+<form method="post" action="/ui/access/{{ subject }}/oversight/revoke">
+  <input type="hidden" name="confirm" value="revoke">
+  <button type="submit">{{ t('subject.revoke_oversight') }}</button>
+</form>
+{% else %}
+<p>{{ t('subject.oversight_offer') }}</p>
+<p><small class="mono">{{ oversight_scopes | join(', ') }}</small></p>
+<form method="post" action="/ui/access/{{ subject }}/oversight">
+  <input type="hidden" name="confirm" value="oversight">
+  <button type="submit">{{ t('subject.grant_oversight') }}</button>
+</form>
+{% endif %}
+</div>
+
+<div class="card">
+<h2>{{ t('subject.grants') }}</h2>
+{% if grants %}
+<table>
+  <tr><th>{{ t('common.connection') }}</th><th>{{ t('subject.level') }}</th>
+      <th>{{ t('subject.carries') }}</th><th>{{ t('subject.granted_by') }}</th>
+      <th>{{ t('subject.since') }}</th><th></th></tr>
+  {% for grant in grants %}
+  <tr>
+    <td><a href="/ui/connections/{{ grant.connection_id }}"><code>{{ grant.connection_id }}</code></a></td>
+    <td><span class="tag {{ grant.level.value }}">{{ grant.level.value }}</span></td>
+    <td><small class="mono">{{ grant.scopes() | join(', ') }}</small></td>
+    <td><code>{{ grant.granted_by }}</code></td>
+    <td>{{ grant.created_at | moment }}</td>
+    <td>
+      <form method="post" action="/ui/access/{{ subject }}/revoke">
+        <input type="hidden" name="connection_id" value="{{ grant.connection_id }}">
+        <input type="hidden" name="confirm" value="revoke">
+        <button type="submit">{{ t('subject.revoke') }}</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="empty">{{ t('subject.holds_nothing') }}{% if not oversight %} {{ t('subject.holds_nothing_tail') }}{% endif %}</p>
+{% endif %}
+</div>
+
+<div class="card">
+<h2>{{ t('subject.grant_a_connection') }}</h2>
+{% if available or grants %}
+<form method="post" action="/ui/access/{{ subject }}">
+  <label>{{ t('common.connection') }}
+    <select name="connection_id" required>
+      {% for row in connections %}
+      <option value="{{ row.connection_id }}">{{ row.connection_id }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>{{ t('subject.level') }}
+    <select name="level">
+      {% for level in levels %}
+      <option value="{{ level }}">{{ level }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <p><small>{{ t('subject.regrant_note') }}</small></p>
+  <button type="submit">{{ t('subject.grant') }}</button>
+</form>
+{% else %}
+<p class="empty">{{ t('access.no_connections') }}</p>
+{% endif %}
+</div>
+
+<p class="actions"><a href="/ui/access">{{ t('subject.all_users') }}</a></p>
+{% endblock %}

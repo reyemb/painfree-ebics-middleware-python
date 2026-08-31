@@ -1,0 +1,25 @@
+# An allow-list, not a deny-list.
+#
+# A deny-list is one forgotten line away from baking a developer's SQLite
+# database, a local `.env`, or a checkout of somebody else's source tree into a
+# published image. Everything is excluded and the four things the build needs
+# are named, so a new directory in this repository cannot silently join them.
+*
+
+!pyproject.toml
+!painfree/
+!deploy/requirements.lock
+!deploy/requirements-build.lock
+
+# The wheel the build stage produces carries the readme as its description and
+# both licence files in its metadata, so the build fails without these three.
+# That is the correct failure: an image whose wheel has dropped the MIT notice
+# it is obliged to keep is not one to ship.
+!README.md
+!LICENSE
+!NOTICE
+
+# Nothing compiled on the host belongs in the image: it is built for whatever
+# Python the developer happened to have.
+painfree/**/__pycache__/
+painfree/**/*.pyc

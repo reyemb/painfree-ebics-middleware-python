@@ -1,0 +1,77 @@
+{
+  "_about": [
+    "Terms in the five non-English catalogues that this project is NOT confident",
+    "about, recorded rather than left to be discovered by an operator.",
+    "",
+    "The five non-English catalogues were produced in one pass and have had NO",
+    "native review. They read fluently, which is exactly what makes a wrong",
+    "domain term dangerous here: a plausible sentence that names the wrong",
+    "banking instrument is worse than an obviously broken one, because nobody",
+    "stops to check it. Every entry below is a term whose correctness a native",
+    "speaker working in payments has to confirm before anyone relies on this in",
+    "production.",
+    "",
+    "`_settled` lists terms that were flagged here and have since been changed,",
+    "with the term that replaced them. They are recorded rather than deleted so",
+    "a reviewer can disagree with the replacement as easily as with the",
+    "original. A settled term is a decision, not a confirmation: none of these",
+    "has been read by a native speaker either.",
+    "",
+    "`register` records the form of address each language was written in. It is",
+    "a deliberate per-language choice rather than an oversight: German and",
+    "Spanish software addresses an operator formally, Italian and Polish",
+    "software conventionally does not. A native reviewer may disagree, and that",
+    "is a review finding rather than a bug.",
+    "",
+    "Format: locale -> catalogue key -> what is uncertain about it. A key here",
+    "must exist in that catalogue; `tests/test_service_i18n.py` checks that, so",
+    "this file cannot outlive the strings it is about."
+  ],
+
+  "de": {
+    "_register": "Sie (formal), as German business software conventionally is.",
+    "_settled": {
+      "grant": "'Freigabe' is gone. An access grant is a 'Berechtigung' throughout, because in Swiss payment operations a 'Freigabe' is what a second person does to release a payment, and that collision was the wrong one for this console. The verb is 'Zugriff erteilen' rather than 'freigeben'.",
+      "oversight": "'Aufsicht' is gone. The deployment-wide read grant is an 'Einsichtsrecht', which says what it is and is not what a Swiss reader calls FINMA. A reviewer may still prefer 'Leseaufsicht'.",
+      "cadence": "'Takt' is gone. A schedule's cadence is an 'Intervall' ('Intervalleinheit' for the unit), which is what German scheduling software says."
+    },
+    "orders.report_text": "'Meldungstext' renders the EBICS `ReportText`. German EBICS documentation is not consistent here and a reviewer should match whatever the banks' own German documentation calls it.",
+    "chrome.subtitle": "'Betriebskonsole' is a literal rendering of 'operator console'; 'Bedienkonsole' or leaving it in English may read better. Left as it is, deliberately: it is a product subtitle, not a domain term, and nothing depends on it.",
+    "keys.step1_body": "'Teilnehmer' is used throughout for the EBICS subscriber. It is the word the German EBICS specification uses, but 'Benutzer' appears in some banks' own German portals; a reviewer should confirm which one their banks print."
+  },
+
+  "fr": {
+    "_register": "vous (formal).",
+    "access.oversight_heading": "'supervision' vs 'surveillance': the second is the ordinary French word for oversight but is also the regulator's word. A reviewer should pick.",
+    "subject.grants": "'autorisation' is used for a grant. French IT security usually says 'habilitation', which is more precise and less easily read as 'permission to do this one thing'. Left as 'autorisation' pending review, because the word also carries the OAuth sense throughout this catalogue and swapping only half of it would be worse than either choice.",
+    "webhooks.endpoint": "'point de terminaison' is correct and is what nobody says; French engineers say 'endpoint'. A style call, not a correctness one.",
+    "order.control_sum": "'somme de contrôle' also means checksum in French computing. The ISO 20022 `CtrlSum` is a total of amounts, not a hash. A reviewer should confirm the banking term."
+  },
+
+  "it": {
+    "_register": "tu (informal), as Italian software conventionally is.",
+    "subject.grants": "'concessione' for a grant. Italian IT security usually says 'abilitazione'; a reviewer should decide which an Italian operator expects.",
+    "schedules.heading": "'scarico' for downloading statements is used in Italian banking IT but is not universal; 'prelievo' and the English 'download' both appear.",
+    "order.control_sum": "'somma di controllo' has the same checksum ambiguity as the French entry.",
+    "status_code.ACPD": "'passato alla compensazione' renders 'handed to clearing'. Confirm against the Italian vocabulary Swiss and Italian banks actually use for clearing."
+  },
+
+  "es": {
+    "_register": "usted (formal).",
+    "_settled": {
+      "statement entries": "'apuntes' is gone. A statement line is a 'movimiento', which is what a Spanish bank's own statement calls it; 'apunte' is correct accounting Spanish but is the bookkeeper's word, not the operator's."
+    },
+    "subject.grants": "'concesión'/'conceder' for a grant. 'Otorgar' and 'habilitación' are both current in Spanish IT security; a reviewer should pick one. 'concesión' is used consistently throughout, so a change is a rename rather than a cleanup.",
+    "order.control_sum": "'suma de control' has the same checksum ambiguity as the French entry.",
+    "status_code.ACPD": "'entregado a la compensación' renders 'handed to clearing'. Confirm the term."
+  },
+
+  "pl": {
+    "_register": "ty (informal), as Polish software conventionally is. Several strings still use masculine forms addressed to the reader; the worst of them ('otrzymałeś', 'zachowałeś') were rephrased impersonally where the sentence was being rewritten anyway, but the catalogue has not been swept. A reviewer should decide between impersonal phrasing throughout and accepting the masculine default.",
+    "subject.grants": "'nadanie' as a noun for an access grant is this project's own coinage and remains the single most likely thing to be wrong. Polish IT security says 'uprawnienie' or 'przyznanie uprawnień', but 'uprawnienie' is already this catalogue's word for *privilege*, and using it for both would make the access screens ambiguous rather than clearer. A reviewer has to settle both words at once, not one of them.",
+    "access.oversight_heading": "'nadzór' is what a Polish reader associates with the financial supervisor (KNF), the same collision the German catalogue had. German settled on 'Einsichtsrecht'; Polish has no equally obvious equivalent and is left as it is.",
+    "access.subject": "'podmiot' for the identity provider's subject: in Polish legal usage a 'podmiot' is a legal entity, which is not what a `sub` claim is.",
+    "status_code.ACPD": "'przekazane do rozrachunku' renders 'handed to clearing'. 'Rozrachunek', 'rozliczenie' and 'izba rozliczeniowa' are not interchangeable and a reviewer must pick the right one.",
+    "keys.fingerprint": "'odcisk klucza' for a key fingerprint. 'Skrót' (digest) is used elsewhere in the same catalogue for the same kind of value; a reviewer should make the two consistent."
+  }
+}

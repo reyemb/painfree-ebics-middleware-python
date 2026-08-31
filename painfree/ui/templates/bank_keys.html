@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}{{ t('bank_keys.title') }} — {{ connection.connection_id }} — painfree{% endblock %}
+{% block head %}{% if outstanding %}<meta http-equiv="refresh" content="2">{% endif %}{% endblock %}
+{% block body %}
+<h1>{{ t('bank_keys.heading') }} — <code>{{ connection.connection_id }}</code></h1>
+
+<div class="card bad">
+  <strong>{{ t('bank_keys.read_this') }}</strong>
+  {{ t('bank_keys.read_this_body') }}
+</div>
+
+<h2>{{ t('bank_keys.what_hpb') }}</h2>
+{# The fingerprints are hex over a key. They are values, not prose: the
+   grouping is the engine's own so that this page and the bank's letter print
+   the same 64 characters the same way. #}
+<p class="lede">{{ t('bank_keys.convention') }}
+<code>{{ connection.letter_digest.value }}</code>. {{ t('bank_keys.grouped') }}</p>
+
+<div class="card">
+{% for role, value in received.items() %}
+  <h3>{{ t('bank_keys.role_' ~ role) }} — {{ 'X002' if role == 'authentication' else 'E002' }}</h3>
+  <span class="fingerprint">{{ value | fingerprint }}</span>
+{% endfor %}
+<table class="plain pushed">
+  {% for key in staged %}
+  <tr><td>{{ t('bank_keys.received', version=key.version.value) }}</td><td>{{ key.created_at | moment }}</td></tr>
+  {% endfor %}
+</table>
+</div>
+
+{% if may('connections:write') %}
+<h2>{{ t('bank_keys.confirm') }}</h2>
+<div class="card">
+<p>{{ t('bank_keys.confirm_body') }}</p>
+<form class="stack" method="post"
+      action="/ui/connections/{{ connection.connection_id }}/keys/confirm_bank_keys">
+  <label>{{ t('bank_keys.authentication_label') }}
+    <input class="mono" type="text" name="authentication" required
+           autocomplete="off" spellcheck="false"
+           placeholder="d9 5b 40 … ({{ t('bank_keys.hex_characters') }})"></label>
+  <label>{{ t('bank_keys.encryption_label') }}
+    <input class="mono" type="text" name="encryption" required
+           autocomplete="off" spellcheck="false"
+           placeholder="6c 00 2a … ({{ t('bank_keys.hex_characters') }})"></label>
+  <div class="actions">
+    <button type="submit" {{ 'disabled' if outstanding else '' }}>{{ t('bank_keys.accept') }}</button>
+  </div>
+</form>
+</div>
+
+<h2>{{ t('bank_keys.decline') }}</h2>
+<div class="card">
+<p>{{ t('bank_keys.decline_body') }}</p>
+<form class="stack" method="post"
+      action="/ui/connections/{{ connection.connection_id }}/keys/decline_bank_keys">
+  <label>{{ t('bank_keys.why') }}<input type="text" name="reason" required
+         placeholder="{{ t('bank_keys.why_placeholder') }}"></label>
+  <div class="actions">
+    <button type="submit" class="danger" {{ 'disabled' if outstanding else '' }}>{{ t('bank_keys.decline_button') }}</button>
+    <a class="button secondary" href="/ui/connections/{{ connection.connection_id }}/keys">{{ t('bank_keys.decide_later') }}</a>
+  </div>
+</form>
+</div>
+{% else %}
+<div class="card"><p class="empty">{{ t('bank_keys.needs_scope') }}</p></div>
+{% endif %}
+{% endblock %}

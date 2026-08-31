@@ -1,0 +1,49 @@
+painfree
+Copyright (c) 2026 reyemb
+
+This product is licensed under the MIT License. The full text is in LICENSE,
+and that notice covers everything in this distribution.
+
+--------------------------------------------------------------------------------
+Third-party notices
+--------------------------------------------------------------------------------
+
+ebics-api/ebics-client-php
+https://github.com/ebics-api/ebics-client-php
+
+The EBICS 3.0 protocol engine in `painfree/ebics3/` is a Python port of
+`ebics-api/ebics-client-php`. It is not a copy: the code was rewritten in
+Python against a different XML and cryptography stack, and it does not
+reproduce the PHP source. It does follow that project's structure and its
+solutions to the parts of EBICS the specification leaves ambiguous, which is
+enough that its licence travels with this distribution rather than being left
+behind in a commit message.
+
+`ebics-client-php` is MIT licensed. Its notice, reproduced in full:
+
+    MIT License
+
+    Copyright (c) 2019-2020 EBICS API
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+
+No other project's source was read or adapted into `painfree/ebics3/`. The
+Ruby `epics` and the Python `fintech` implementations are used only as
+black-box oracles: they are executed and their output is compared, and neither
+contributes code to this distribution.

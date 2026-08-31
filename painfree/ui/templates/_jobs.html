@@ -1,0 +1,46 @@
+{# One connection's key jobs, newest first. Shared by the detail and key pages.
+
+   Imported `with context` by both, so `t` reaches the macros: a partial that
+   built its own English headings would be the one place in the console that
+   stayed English. #}
+{% import "_bank.html" as bank with context %}
+{% macro job_table(jobs) %}
+{% if jobs %}
+<table>
+  <tr><th>{{ t('jobs.requested') }}</th><th>{{ t('jobs.operation') }}</th>
+      <th>{{ t('jobs.by') }}</th><th>{{ t('jobs.outcome') }}</th></tr>
+  {% for job in jobs %}
+  <tr>
+    <td>{{ job.created_at | moment }}</td>
+    <td><code>{{ job.action.value }}</code></td>
+    <td>{{ job.requested_by_id }}</td>
+    <td>
+      <span class="tag {{ job.state.value }}">{{ job.state.value }}</span>
+      {% if job.return_code %}<br><code>{{ job.return_code }}</code>
+        {{ bank.words(job.report_text) }}{% endif %}
+      {% if job.last_error %}<br><span class="mono">{{ job.last_error }}</span>{% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="empty">{{ t('jobs.empty') }}</p>
+{% endif %}
+{% endmacro %}
+
+{% macro key_table(keys) %}
+<table>
+  <tr><th>{{ t('keys.version') }}</th><th>{{ t('keys.generation') }}</th>
+      <th>{{ t('keys.status') }}</th><th>{{ t('keys.fingerprint') }}</th>
+      <th>{{ t('keys.private_half') }}</th></tr>
+  {% for key in keys %}
+  <tr>
+    <td><code>{{ key.version.value }}</code></td>
+    <td>{{ key.generation }}</td>
+    <td><span class="tag {{ 'ready' if key.status == 'active' else key.status }}">{{ key.status }}</span></td>
+    <td class="mono">{{ key.fingerprint | fingerprint }}</td>
+    <td>{{ t('keys.sealed') if key.has_private else t('keys.public_only') }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endmacro %}

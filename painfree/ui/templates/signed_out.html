@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}{{ t('signed_out.title') }} — painfree{% endblock %}
+{% block body %}
+<h1>{{ t('signed_out.heading') }}</h1>
+<p class="lede">{{ t('signed_out.lede') }}</p>
+
+{# The limitation, stated on the screen rather than only in the ADR. A browser
+   that answered a native Basic dialog keeps the credential until it is closed,
+   and no header this service sends makes it forget. #}
+<div class="card">
+  <h2>{{ t('signed_out.browser_heading') }}</h2>
+  <p>{{ t('signed_out.browser') }}</p>
+  <p>{{ t('signed_out.shared_machine') }}</p>
+</div>
+
+<div class="actions">
+  <a class="button" href="/auth/login">{{ t('signed_out.sign_in_again') }}</a>
+</div>
+{% endblock %}

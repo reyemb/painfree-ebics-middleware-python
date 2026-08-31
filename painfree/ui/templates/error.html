@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}{{ code }} — painfree{% endblock %}
+{% block body %}
+<h1>{{ code }}</h1>
+{# `code` and `message` are the API's own error envelope, rendered as a page.
+   The code is a machine-facing contract and is never translated; the message
+   is the same sentence a client would have been given, so the two halves of
+   this console cannot disagree about what happened. #}
+<p class="lede">{{ message }}</p>
+<div class="card {{ 'bad' if status >= 500 else 'warn' }}">
+  <table class="plain">
+    <tr><td>{{ t('error.status') }}</td><td>{{ status }}</td></tr>
+    <tr><td>{{ t('error.request_id') }}</td><td><code>{{ request_id or '—' }}</code></td></tr>
+    {% if detail %}
+    <tr><td>{{ t('error.detail') }}</td><td><pre class="json">{{ detail | pretty_json }}</pre></td></tr>
+    {% endif %}
+  </table>
+</div>
+<p><a class="button secondary" href="/ui/connections">{{ t('error.back') }}</a></p>
+{% endblock %}

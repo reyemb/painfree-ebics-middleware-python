@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}{{ t('schedule_new.title') }} — painfree{% endblock %}
+{% block body %}
+<h1>{{ t('schedule_new.heading') }}</h1>
+<p class="lede">{{ t('schedule_new.lede') }}</p>
+
+<div class="card warn">
+  <h2>{{ t('schedule_new.btf_heading') }}</h2>
+  <p>{{ t('schedule_new.btf_body') }}</p>
+  {# The table is the bank's own vocabulary: `EOP`, `camt.053`, `ZIP`. The
+     column headings are translated; not one cell is. #}
+  <table>
+    <tr><th>{{ t('schedule_new.document') }}</th><th>ServiceName</th><th>MsgName</th><th>MsgVersion</th>
+        <th>{{ t('schedules.scope_column') }}</th><th>{{ t('schedule_new.container') }}</th></tr>
+    {% for preset in presets %}
+    <tr><td>{{ preset.label }}</td>
+        <td class="mono">{{ preset.service_name }}</td>
+        <td class="mono">{{ preset.msg_name }}</td>
+        <td class="mono">{{ preset.msg_version }}</td>
+        <td class="mono">{{ preset.scope }}</td>
+        <td class="mono">{{ preset.container }}</td></tr>
+    {% endfor %}
+  </table>
+</div>
+
+<form class="stack" method="post" action="/ui/schedules">
+  <label for="connection_id">{{ t('common.connection') }}
+    <span class="hint">{{ t('schedule_new.connection_hint') }}</span></label>
+  <select id="connection_id" name="connection_id" required>
+    <option value="">{{ t('schedule_new.choose_connection') }}</option>
+    {% for row in connections %}
+    <option value="{{ row.connection_id }}" {{ 'selected' if row.connection_id == selected_connection else '' }}>{{ row.connection_id }}{{ '' if row.initialised else ' (' ~ t('schedule_new.not_initialised') ~ ')' }}</option>
+    {% endfor %}
+  </select>
+
+  <label for="description">{{ t('webhook_new.description') }}
+    <span class="hint">{{ t('schedule_new.description_hint') }}</span></label>
+  <input type="text" id="description" name="description"
+         value="{{ values.description | default('') }}" placeholder="Daily statements, main account">
+
+  <label for="service_name">BTF
+    <span class="hint">{{ t('schedule_new.btf_fields_hint') }}</span></label>
+  <div class="filters">
+    <div><label for="service_name">ServiceName</label>
+      <input type="text" id="service_name" name="service_name" required class="mono"
+             maxlength="3" value="{{ values.service_name | default('EOP') }}"></div>
+    <div><label for="msg_name">MsgName</label>
+      <input type="text" id="msg_name" name="msg_name" required class="mono"
+             maxlength="10" value="{{ values.msg_name | default('camt.053') }}"></div>
+    <div><label for="msg_version">MsgVersion</label>
+      <input type="text" id="msg_version" name="msg_version" class="mono"
+             maxlength="3" value="{{ values.msg_version | default('08') }}"></div>
+    <div><label for="msg_variant">MsgVariant</label>
+      <input type="text" id="msg_variant" name="msg_variant" class="mono"
+             maxlength="3" value="{{ values.msg_variant | default('') }}"></div>
+    <div><label for="scope">{{ t('schedules.scope_column') }}</label>
+      <input type="text" id="scope" name="scope" class="mono"
+             maxlength="3" value="{{ values.scope | default('CH') }}"></div>
+    <div><label for="service_option">{{ t('schedule_new.option') }}</label>
+      <input type="text" id="service_option" name="service_option" class="mono"
+             maxlength="10" value="{{ values.service_option | default('') }}"></div>
+    <div><label for="container">{{ t('schedule_new.container') }}</label>
+      <input type="text" id="container" name="container" class="mono"
+             maxlength="3" value="{{ values.container | default('ZIP') }}"></div>
+  </div>
+
+  <label for="cadence">{{ t('schedules.cadence') }}
+    <span class="hint">{{ t('schedule_new.cadence_hint') }}</span></label>
+  <div class="filters">
+    <div><input type="number" id="cadence" name="cadence" min="1" required value="6"></div>
+    <div><select name="cadence_unit" aria-label="{{ t('schedule_new.cadence_unit') }}">
+      <option value="minutes">{{ t('schedule_new.minutes') }}</option>
+      <option value="hours" selected>{{ t('schedule_new.hours') }}</option>
+      <option value="days">{{ t('schedule_new.days') }}</option>
+    </select></div>
+  </div>
+
+  <label for="window_days">{{ t('schedule_new.window_days') }}
+    <span class="hint">{{ t('schedule_new.window_days_hint') }}</span></label>
+  <input type="number" id="window_days" name="window_days" min="1"
+         value="{{ values.window_days | default('7') }}">
+
+  <div class="actions">
+    <button type="submit">{{ t('schedule_new.submit') }}</button>
+    <a class="button secondary" href="/ui/schedules">{{ t('common.cancel') }}</a>
+  </div>
+</form>
+{% endblock %}

@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}{{ statement.statement_id }} — painfree{% endblock %}
+{% block body %}
+<h1><code>{{ statement.statement_id }}</code></h1>
+<p class="lede">{{ statement.message_type }}, {{ t('statements.entry_count', count=statement.entry_count) }}</p>
+
+<div class="card">
+<table class="plain">
+  <tr><td>{{ t('common.connection') }}</td><td><code>{{ statement.connection_id }}</code></td></tr>
+  {% if statement.order_id %}
+  <tr><td>{{ t('statements.reports_on') }}</td><td><a href="/ui/orders/{{ statement.order_id }}"><code>{{ statement.order_id }}</code></a></td></tr>
+  {% elif statement.message_type.startswith('pain.002') %}
+  <tr><td>{{ t('statements.reports_on') }}</td><td>{{ t('statement.no_order') }}
+      <code>{{ statement.identification or '—' }}</code></td></tr>
+  {% endif %}
+  <tr><td>{{ t('statement.identification') }}</td><td class="mono">{{ statement.identification or '—' }}</td></tr>
+  <tr><td>{{ t('statement.sequence') }}</td><td>{{ statement.sequence_number or '—' }}</td></tr>
+  <tr><td>{{ t('statements.account') }}</td><td class="mono">{{ statement.iban or '—' }}</td></tr>
+  <tr><td>{{ t('statement.currency') }}</td><td>{{ statement.currency or '—' }}</td></tr>
+  <tr><td>{{ t('statement.opening_balance') }}</td><td>{{ statement.opening_balance | amount(statement.currency) }}</td></tr>
+  <tr><td>{{ t('statements.closing_balance') }}</td><td>{{ statement.closing_balance | amount(statement.currency) }}</td></tr>
+  <tr><td>{{ t('statement.period') }}</td><td>{{ statement.from_datetime | moment }} → {{ statement.to_datetime | moment }}</td></tr>
+  <tr><td>{{ t('statement.download_run') }}</td><td><code>{{ statement.run_id or '—' }}</code></td></tr>
+  <tr><td>{{ t('order.ingested') }}</td><td>{{ statement.ingested_at | moment }}</td></tr>
+  <tr><td>{{ t('statement.content_hash') }}</td><td class="mono">{{ statement.content_hash }}</td></tr>
+</table>
+</div>
+
+{# The payload is the normalised document: an interchange shape whose field
+   names and values are the same in every locale. It is shown as it is stored. #}
+<h2>{{ t('statement.normalised') }}</h2>
+<div class="card"><pre class="json">{{ statement.payload | pretty_json }}</pre></div>
+{% endblock %}

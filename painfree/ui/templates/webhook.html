@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}{{ subscription.url }} — painfree{% endblock %}
+{% block body %}
+<h1>{{ t('webhook.heading') }}</h1>
+<p class="lede mono">{{ subscription.url }}</p>
+
+{% if subscription.parked %}
+<div class="card bad">
+  <h2>{{ t('webhook.parked') }}</h2>
+  <p>{{ t('webhook.parked_why', failures=subscription.consecutive_failures) }}
+  {{ t('webhook.parked_owed', count=owed) }}</p>
+  {% if subscription.last_error %}<p class="mono">{{ subscription.last_error }}</p>{% endif %}
+</div>
+{% elif not subscription.enabled %}
+<div class="card warn">
+  <h2>{{ t('webhook.paused') }}</h2>
+  <p>{{ t('webhook.paused_why') }} {{ t('webhook.waiting_count', count=owed) }}</p>
+</div>
+{% endif %}
+
+{% if pinged %}
+<div class="card good">
+  <p>{{ t('webhook.pinged') }} <code>{{ pinged }}</code>. {{ t('webhook.pinged_why') }}</p>
+</div>
+{% endif %}
+
+{% if subscription.rotating %}
+<div class="card warn">
+  <h2>{{ t('webhook.rotating') }}</h2>
+  <p>{{ t('webhook.rotating_why', since=subscription.secret_rotated_at | moment,
+           generation=subscription.secret_generation) }}</p>
+  {% if may('webhooks:manage') %}
+  <form method="post" action="/ui/webhooks/{{ subscription.subscription_id }}/retire-secret">
+    <div class="actions"><button type="submit">{{ t('webhook.finish_rotation') }}</button></div>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="card">
+<table class="plain">
+  <tr><td>{{ t('webhook_secret.subscription') }}</td><td class="mono">{{ subscription.subscription_id }}</td></tr>
+  <tr><td>{{ t('webhook_new.description') }}</td><td>{{ subscription.description or '—' }}</td></tr>
+  <tr><td>{{ t('common.connection') }}</td>
+      <td>{% if subscription.connection_id %}<a href="/ui/connections/{{ subscription.connection_id }}"><code>{{ subscription.connection_id }}</code></a>{% else %}{{ t('common.every_connection') }}{% endif %}</td></tr>
+  <tr><td>{{ t('webhooks.events') }}</td><td class="mono">{{ subscription.event_types | join(', ') }}</td></tr>
+  <tr><td>{{ t('webhooks.health') }}</td><td><span class="tag {{ subscription.health }}">{{ subscription.health }}</span></td></tr>
+  <tr><td>{{ t('webhook.consecutive_failures') }}</td><td>{{ subscription.consecutive_failures | count }}</td></tr>
+  <tr><td>{{ t('webhooks.last_delivery') }}</td>
+      <td>{{ subscription.last_delivery_at | moment }}
+          {%- if subscription.last_status %}, HTTP {{ subscription.last_status }}{% endif %}
+          {% if subscription.last_error %}<br><small class="mono">{{ subscription.last_error }}</small>{% endif %}</td></tr>
+  <tr><td>{{ t('webhook.waiting_to_deliver') }}</td><td>{{ owed | count }}</td></tr>
+  <tr><td>{{ t('webhook.signing_secret') }}</td>
+      <td>{{ t('webhooks.generation', number=subscription.secret_generation) }},
+          {{ t('webhook.sealed') }}</td></tr>
+  <tr><td>{{ t('connection.registered') }}</td><td>{{ subscription.created_at | moment }}</td></tr>
+</table>
+</div>
+
+{% if may('webhooks:manage') %}
+<h2>{{ t('webhook.controls') }}</h2>
+<div class="card">
+  <div class="actions">
+    <form method="post" action="/ui/webhooks/{{ subscription.subscription_id }}/ping">
+      <button type="submit" {{ 'disabled' if subscription.parked or not subscription.enabled else '' }}>{{ t('webhook.send_test') }}</button>
+    </form>
+    {% if subscription.parked or not subscription.enabled %}
+    <form method="post" action="/ui/webhooks/{{ subscription.subscription_id }}/resume">
+      <button type="submit">{{ t('webhook.unpark') if subscription.parked else t('webhook.resume') }}</button>
+    </form>
+    {% else %}
+    <form method="post" action="/ui/webhooks/{{ subscription.subscription_id }}/pause">
+      <button type="submit" class="secondary">{{ t('webhook.pause') }}</button>
+    </form>
+    {% endif %}
+    {% if not subscription.rotating %}
+    <form method="post" action="/ui/webhooks/{{ subscription.subscription_id }}/rotate-secret">
+      <button type="submit" class="secondary">{{ t('webhook.rotate') }}</button>
+    </form>
+    {% endif %}
+  </div>
+  <p class="hint">{{ t('webhook.controls_hint') }}</p>
+</div>
+
+<h2>{{ t('webhook.configuration') }}</h2>
+<form class="stack card" method="post" action="/ui/webhooks/{{ subscription.subscription_id }}/edit">
+  <label for="url">{{ t('webhook_new.url') }}
+    <span class="hint">{{ t('webhook.url_hint') }}</span></label>
+  <input type="url" id="url" name="url" required class="mono" value="{{ subscription.url }}">
+
+  <label for="description">{{ t('webhook_new.description') }}</label>
+  <input type="text" id="description" name="description" value="{{ subscription.description or '' }}">
+
+  <label>{{ t('webhook_new.event_types') }}</label>
+  {% for name in event_types %}
+  <div><label class="plainlabel">
+    <input type="checkbox" name="event:{{ name }}" value="1"
+           {{ 'checked' if name in subscription.event_types else '' }}>
+    <code>{{ name }}</code>
+  </label></div>
+  {% endfor %}
+
+  <div class="actions"><button type="submit">{{ t('connection_edit.save') }}</button></div>
+</form>
+
+<h2>{{ t('webhook.remove') }}</h2>
+<form class="card bad" method="post" action="/ui/webhooks/{{ subscription.subscription_id }}/delete">
+  <p>{{ t('webhook.remove_why', count=owed) }}</p>
+  <label for="confirm">{{ t('webhook.type_delete') }}</label>
+  <input type="text" id="confirm" name="confirm" class="mono" autocomplete="off">
+  <div class="actions"><button type="submit" class="danger">{{ t('webhook.delete_button') }}</button></div>
+</form>
+{% endif %}
+
+<h2>{{ t('webhook.recent_deliveries') }}</h2>
+<div class="card">
+{% if deliveries %}
+<table>
+  <tr><th>{{ t('webhook.delivery') }}</th><th>{{ t('order.event') }}</th>
+      <th>{{ t('common.state') }}</th><th>{{ t('order.attempts') }}</th>
+      <th>{{ t('webhook.answer') }}</th><th>{{ t('webhook.occurred') }}</th>
+      <th>{{ t('webhook.delivered') }}</th></tr>
+  {% for row in deliveries %}
+  <tr>
+    <td><small class="mono">{{ row.delivery_id }}</small><br>
+        <small class="mono">{{ row.event_id }}</small></td>
+    <td><code>{{ row.event_type }}</code>
+        {% if row.event_type == ping_event_type %}<br><small>{{ t('webhook.test_event') }}</small>{% endif %}
+        {% if row.order_id %}<br><a href="/ui/orders/{{ row.order_id }}"><small class="mono">{{ row.order_id }}</small></a>{% endif %}</td>
+    <td><span class="tag {{ row.state }}">{{ row.state }}</span></td>
+    <td>{{ row.attempts | count }}{% if row.next_attempt_at and row.state == 'pending' %}<br><small>{{ t('webhook.next_attempt') }} {{ row.next_attempt_at | moment }}</small>{% endif %}</td>
+    <td>{% if row.last_status %}HTTP {{ row.last_status }}{% else %}—{% endif %}
+        {% if row.last_error %}<br><small class="mono">{{ row.last_error }}</small>{% endif %}</td>
+    <td>{{ row.occurred_at | moment }}</td>
+    <td>{{ row.delivered_at | moment }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="empty">{{ t('webhook.no_deliveries') }}</p>
+{% endif %}
+</div>
+{% endblock %}

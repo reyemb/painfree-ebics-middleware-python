@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}{{ t('letter.title') }} — {{ connection.connection_id }} — painfree{% endblock %}
+{% block body %}
+<p class="actions noprint">
+  <a class="button secondary" href="/ui/connections/{{ connection.connection_id }}/keys">{{ t('letter.back') }}</a>
+  <span class="hint">{{ t('letter.hint') }}</span>
+</p>
+
+{# The letter is a document the bank reads. Its headings follow the console's
+   language, because the person printing it is the reader who has to check it;
+   the exponent, the modulus and the hashes are values and are printed exactly
+   as the engine formats them, in every locale. #}
+<div class="letter">
+<h1>{{ t('letter.heading') }}</h1>
+<table class="plain">
+  <tr><td>HostID</td><td><code>{{ letter.host_id }}</code></td></tr>
+  <tr><td>PartnerID</td><td><code>{{ letter.partner_id }}</code></td></tr>
+  <tr><td>UserID</td><td><code>{{ letter.user_id }}</code></td></tr>
+  <tr><td>{{ t('letter.date') }}</td><td>{{ connection.updated_at | moment }}</td></tr>
+  <tr><td>{{ t('letter.hash_convention') }}</td><td>{{ letter.digest.value }}</td></tr>
+</table>
+
+{% for key in letter.keys %}
+<div class="keyblock">
+  <h2>{{ key.version.value }} — {{ t('letter.key_of', role=key.version.role.value, bits=key.modulus_bits) }}</h2>
+  <h3>{{ t('letter.exponent') }}</h3>
+  <div class="numbers">{{ key.exponent }}</div>
+  <h3>{{ t('letter.modulus') }}</h3>
+  <div class="numbers">{{ key.modulus }}</div>
+  <h3>{{ t('letter.hash') }}</h3>
+  <span class="fingerprint">{{ key.fingerprint_formatted }}</span>
+</div>
+{% endfor %}
+
+<p>{{ t('letter.declaration') }}</p>
+<div class="sign">{{ t('letter.signature_line') }}</div>
+</div>
+{% endblock %}

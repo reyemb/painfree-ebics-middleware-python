@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}{{ t('connection_new.title') }} — painfree{% endblock %}
+{% block body %}
+<h1>{{ t('connection_new.heading') }}</h1>
+<p class="lede">{{ t('connection_new.lede') }}</p>
+
+<form class="stack card" method="post" action="/ui/connections">
+  <label>{{ t('connection_new.connection_id') }}
+    <span class="hint">{{ t('connection_new.connection_id_hint') }}</span>
+    <input type="text" name="connection_id" required pattern="[a-z0-9][a-z0-9._\-]{0,63}"
+           placeholder="acme-ubs" value="{{ values.get('connection_id', '') }}"></label>
+
+  <label>HostID<span class="hint">{{ t('connection_new.host_id_hint') }}</span>
+    <input type="text" name="host_id" required placeholder="UBSCH" value="{{ values.get('host_id', '') }}"></label>
+  <label>PartnerID<span class="hint">{{ t('connection_new.partner_id_hint') }}</span>
+    <input type="text" name="partner_id" required placeholder="PARTNER1" value="{{ values.get('partner_id', '') }}"></label>
+  <label>UserID<span class="hint">{{ t('connection_new.user_id_hint') }}</span>
+    <input type="text" name="user_id" required placeholder="USER1" value="{{ values.get('user_id', '') }}"></label>
+  <label>{{ t('connections.host_url') }}<span class="hint">{{ t('connection_new.host_url_hint') }}</span>
+    <input type="url" name="host_url" required placeholder="https://ebics.example-bank.ch/ebicsweb"
+           value="{{ values.get('host_url', '') }}"></label>
+
+  <label>{{ t('connection_new.letter_digest') }}
+    <span class="hint">{{ t('connection_new.letter_digest_hint') }}</span>
+    <select name="letter_digest">
+      <option value="public_key">{{ t('connection_new.digest_public_key') }}</option>
+      <option value="certificate">{{ t('connection_new.digest_certificate') }}</option>
+    </select></label>
+
+  <h3>{{ t('connection_new.product') }}</h3>
+  <label>{{ t('connection_new.product_name') }}<span class="hint">{{ t('connection_new.product_name_hint') }}</span>
+    <input type="text" name="product_name" placeholder="painfree"></label>
+  <label>{{ t('connection_new.product_language') }}<input type="text" name="product_language" maxlength="2" placeholder="de"></label>
+  <label>{{ t('connection_new.product_institute') }}<input type="text" name="product_institute"></label>
+
+  <div class="actions">
+    <button type="submit">{{ t('connection_new.register') }}</button>
+    <a class="button secondary" href="/ui/connections">{{ t('common.cancel') }}</a>
+  </div>
+</form>
+{% endblock %}

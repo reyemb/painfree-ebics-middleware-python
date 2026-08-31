@@ -1,0 +1,125 @@
+/* What an element looks like before any class is put on it: the reset, the
+   type scale applied to headings, links, focus, and print.
+
+   Everything here is a bare element selector. If a rule needs a class it
+   belongs in 03-chrome.css (the frame) or 04-components.css (the contents). */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  font: var(--pf-body-large);
+  color: var(--pf-on-surface);
+  background: var(--pf-surface);
+  /* The console renders tabular ids and fingerprints beside prose. Lining
+     figures keep a column of order ids from looking ragged. */
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* --- headings ------------------------------------------------------------
+   The M3 scale, one step down from where a marketing page would start: a
+   console page is a working surface, not a hero. */
+
+h1 { font: var(--pf-headline-small); margin: 0 0 var(--pf-space-2); }
+h2 { font: var(--pf-title-large); margin: var(--pf-space-6) 0 var(--pf-space-3); }
+h3 {
+  font: var(--pf-title-small);
+  margin: var(--pf-space-5) 0 var(--pf-space-2);
+  color: var(--pf-on-surface-variant);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+h1 code, h2 code { font-size: inherit; }
+
+p { margin: 0 0 var(--pf-space-3); }
+ul, ol { margin: 0 0 var(--pf-space-3); padding-left: var(--pf-space-5); }
+li { margin: 0 0 var(--pf-space-1); }
+strong { font-weight: 600; }
+small { font: var(--pf-body-small); }
+
+code, pre, .mono, input.mono, .fingerprint {
+  font-family: var(--pf-font-mono);
+  font-size: .9375em;
+}
+code { overflow-wrap: anywhere; }
+
+hr {
+  border: none;
+  border-top: 1px solid var(--pf-outline-variant);
+  margin: var(--pf-space-5) 0;
+}
+
+/* --- links ----------------------------------------------------------------
+   Underlined, always. A console that distinguishes a link from body text by
+   colour alone is unreadable to a reader who cannot see that difference, and
+   this is a page where following the right id matters. */
+
+a {
+  color: var(--pf-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+  border-radius: var(--pf-corner-xs);
+}
+a:hover { text-decoration-thickness: 2px; }
+
+/* --- focus ----------------------------------------------------------------
+   One ring, everywhere, on the keyboard only. `:focus-visible` rather than
+   `:focus` so a clicked button does not keep a ring the mouse user did not
+   ask for -- but every focusable thing in this console can be reached with a
+   Tab and shows this when it is. */
+
+:focus-visible {
+  outline: 3px solid var(--pf-primary);
+  outline-offset: 2px;
+}
+
+/* --- forms: only what is common to every control ------------------------- */
+
+button, input, select, textarea { font: inherit; color: inherit; }
+
+::placeholder { color: var(--pf-on-surface-variant); opacity: .7; }
+
+/* --- accessibility helpers ----------------------------------------------- */
+
+/* Off screen but still in the accessibility tree and still focusable. Used for
+   the drawer's checkbox and the skip link, both of which have to keep working
+   for a keyboard. `display: none` would take them out of the tab order. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* --- motion ---------------------------------------------------------------
+   Every transition in this stylesheet is a courtesy. A reader who has asked
+   their system for less of it gets none. */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 1ms !important;
+    animation-duration: 1ms !important;
+  }
+}
+
+/* --- print ----------------------------------------------------------------
+   The INI letter is the only page here that exists to be printed. On paper the
+   chrome is not chrome, it is noise on a document somebody signs. */
+
+@media print {
+  :root { color-scheme: light; }
+  .pf-app-bar, .pf-drawer, .pf-nav-switch, .pf-skip, .noprint {
+    display: none !important;
+  }
+  body { background: #fff; color: #000; }
+  .pf-shell { display: block; }
+  main { max-width: none; padding: 0; }
+  a { color: #000; text-decoration: none; }
+}

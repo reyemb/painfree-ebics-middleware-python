@@ -1,0 +1,416 @@
+/* The things a page is made of: cards, tables, chips, buttons, text fields,
+   the key-lifecycle stepper, the fingerprint block and the printable letter.
+
+   Every class name here already existed. That is the point of this file: the
+   restyle is a change of stylesheet, not a rewrite of twenty-nine templates,
+   so what each page *says* is reviewable as unchanged. */
+
+/* --- page furniture ------------------------------------------------------- */
+
+.lede {
+  font: var(--pf-body-large);
+  color: var(--pf-on-surface-variant);
+  max-width: 72ch;
+  margin: 0 0 var(--pf-space-5);
+}
+.hint {
+  display: block;
+  font: var(--pf-body-small);
+  font-weight: 400;
+  color: var(--pf-on-surface-variant);
+}
+.quiet { color: var(--pf-on-surface-variant); font: var(--pf-body-small); }
+.tight { margin-top: 0; }
+.pushed { margin-top: var(--pf-space-4); }
+.empty {
+  color: var(--pf-on-surface-variant);
+  font-style: italic;
+  padding: var(--pf-space-4) 0;
+}
+.notice {
+  padding: var(--pf-space-3) var(--pf-space-4);
+  border-radius: var(--pf-corner-sm);
+  background: var(--pf-success-container);
+  color: var(--pf-on-success-container);
+  font: var(--pf-body-medium);
+}
+
+/* --- cards ----------------------------------------------------------------
+   M3's outlined card: a container tone, a hairline outline, no shadow. The
+   three toned variants are the console's whole vocabulary of alarm -- `bad` is
+   a thing that has stopped, `warn` is a thing waiting for a human, `good` is a
+   thing that worked -- and each uses its palette's container/on-container pair
+   so the text on it is legible in both themes by construction. */
+
+.card {
+  background: var(--pf-surface-low);
+  border: 1px solid var(--pf-outline-variant);
+  border-radius: var(--pf-corner-md);
+  padding: var(--pf-space-4) var(--pf-space-5);
+  margin: 0 0 var(--pf-space-4);
+}
+.card > :first-child { margin-top: 0; }
+.card > :last-child { margin-bottom: 0; }
+.card h2 { font: var(--pf-title-medium); margin-top: 0; }
+
+.card.bad {
+  background: var(--pf-error-container);
+  border-color: var(--pf-error);
+  color: var(--pf-on-error-container);
+}
+.card.warn {
+  background: var(--pf-warning-container);
+  border-color: var(--pf-warning);
+  color: var(--pf-on-warning-container);
+}
+.card.good {
+  background: var(--pf-success-container);
+  border-color: var(--pf-success);
+  color: var(--pf-on-success-container);
+}
+/* Inside a toned card the text is already the container's `on` colour; a link
+   or a hint that reverted to the surface palette would be the one unreadable
+   thing on an otherwise legible panel. */
+.card.bad a, .card.warn a, .card.good a { color: inherit; }
+.card.bad .hint, .card.warn .hint, .card.good .hint,
+.card.bad small, .card.warn small, .card.good small { color: inherit; opacity: .85; }
+.card.bad th, .card.warn th, .card.good th,
+.card.bad td:first-child, .card.warn td:first-child, .card.good td:first-child { color: inherit; }
+.card.bad td, .card.warn td, .card.good td,
+.card.bad th { border-bottom-color: color-mix(in srgb, currentColor 25%, transparent); }
+
+/* --- tables ---------------------------------------------------------------
+   A console table is read across, so the row rule matters more than the cell
+   padding. `.plain` is the two-column key/value form used on every detail
+   page. Wide tables scroll inside the card rather than widening the page. */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font: var(--pf-body-medium);
+}
+th, td {
+  text-align: left;
+  padding: var(--pf-space-3) var(--pf-space-3);
+  border-bottom: 1px solid var(--pf-outline-variant);
+  vertical-align: top;
+}
+th {
+  font: var(--pf-label-medium);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--pf-on-surface-variant);
+  white-space: nowrap;
+}
+tr:last-child td { border-bottom: none; }
+tbody tr:hover td { background: var(--pf-surface-lowest); }
+/* An id is one token and must not be broken across two lines: an operator
+   copying `ord_9d20e6b5` out of a table is the whole point of the column. When
+   that widens the table past its card, the card scrolls -- which is a
+   scrollbar rather than a mangled identifier. */
+td code, td > a > code { white-space: nowrap; }
+
+table.plain td:first-child {
+  color: var(--pf-on-surface-variant);
+  width: 220px;
+  white-space: nowrap;
+}
+.card table { margin: 0 0 var(--pf-space-2); }
+.card > table:last-child { margin-bottom: 0; }
+/* A table wider than its card gets its own scroller. The page body never
+   scrolls sideways, because a horizontal scrollbar under a hundred rows is how
+   a return code goes unread. */
+.card { overflow-x: auto; }
+
+/* --- chips ----------------------------------------------------------------
+   M3 assist chips, tinted by meaning. The neutral tone is not a mistake: an
+   `empty` download run and a `queued` order are ordinary, and a console that
+   paints the ordinary case in a warning colour teaches an operator to ignore
+   warning colours. */
+
+.tag {
+  display: inline-block;
+  padding: 2px var(--pf-space-2);
+  border-radius: var(--pf-corner-sm);
+  font: var(--pf-label-medium);
+  white-space: nowrap;
+  background: var(--pf-surface-highest);
+  color: var(--pf-on-surface);
+}
+
+.tag.ready, .tag.submitted, .tag.done, .tag.acknowledged,
+.tag.healthy, .tag.delivered, .tag.run-complete, .tag.success {
+  background: var(--pf-success-container);
+  color: var(--pf-on-success-container);
+}
+.tag.bank_keys_received, .tag.keys_sent, .tag.ini_sent, .tag.hia_sent,
+.tag.failing, .tag.untested, .tag.paused, .tag.rotating {
+  background: var(--pf-warning-container);
+  color: var(--pf-on-warning-container);
+}
+.tag.rejected, .tag.failed, .tag.parked, .tag.run-refused, .tag.run-failed,
+.tag.failure {
+  background: var(--pf-error-container);
+  color: var(--pf-on-error-container);
+}
+.tag.operator {
+  background: var(--pf-primary-container);
+  color: var(--pf-on-primary-container);
+}
+.tag.viewer, .tag.created, .tag.untried, .tag.run-empty {
+  background: var(--pf-surface-highest);
+  color: var(--pf-on-surface-variant);
+}
+.tag.accepted, .tag.submitting, .tag.queued, .tag.running,
+.tag.run-running, .tag.pending, .tag.delivering {
+  background: var(--pf-secondary-container);
+  color: var(--pf-on-secondary-container);
+}
+
+/* --- buttons ---------------------------------------------------------------
+   M3 filled, outlined and filled-error. Pill shaped, 40px high, label-large.
+   `a.button` and `button` are one thing on purpose: half of this console's
+   actions are links to a confirmation page and half are form submissions, and
+   an operator should not be able to tell which is which by looking. */
+
+button, .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--pf-space-2);
+  min-height: 40px;
+  padding: var(--pf-space-2) var(--pf-space-5);
+  border: 1px solid transparent;
+  border-radius: var(--pf-corner-full);
+  background: var(--pf-primary);
+  color: var(--pf-on-primary);
+  font: var(--pf-label-large);
+  text-decoration: none;
+  cursor: pointer;
+  transition: filter var(--pf-duration-short) var(--pf-easing),
+              background-color var(--pf-duration-short) var(--pf-easing);
+}
+button:hover, .button:hover { filter: brightness(1.1); text-decoration: none; }
+button:active, .button:active { filter: brightness(.95); }
+
+button.secondary, .button.secondary {
+  background: transparent;
+  color: var(--pf-primary);
+  border-color: var(--pf-outline);
+}
+button.secondary:hover, .button.secondary:hover {
+  filter: none;
+  background: color-mix(in srgb, var(--pf-primary) calc(var(--pf-state-hover) * 100%), transparent);
+}
+
+button.danger, .button.danger {
+  background: var(--pf-error);
+  color: var(--pf-on-error);
+}
+
+button[disabled], button[disabled]:hover {
+  background: color-mix(in srgb, var(--pf-on-surface) 12%, transparent);
+  color: color-mix(in srgb, var(--pf-on-surface) 45%, transparent);
+  border-color: transparent;
+  cursor: not-allowed;
+  filter: none;
+}
+
+.actions {
+  margin-top: var(--pf-space-4);
+  display: flex;
+  gap: var(--pf-space-3);
+  flex-wrap: wrap;
+  align-items: center;
+}
+.actions form { margin: 0; }
+p.actions { margin-bottom: var(--pf-space-4); }
+
+/* --- text fields -----------------------------------------------------------
+   M3's outlined text field, without the floating label: every field in this
+   console already has a real `<label>` above it, and a label that animates into
+   a border is a label an operator cannot read while typing into the field. */
+
+input[type=text], input[type=url], input[type=date], input[type=number],
+input[type=password], input[type=email], select, textarea {
+  width: 100%;
+  min-height: 44px;
+  padding: var(--pf-space-2) var(--pf-space-3);
+  border: 1px solid var(--pf-outline);
+  border-radius: var(--pf-corner-xs);
+  background: var(--pf-surface-lowest);
+  color: var(--pf-on-surface);
+}
+input:hover, select:hover, textarea:hover { border-color: var(--pf-on-surface); }
+input:focus, select:focus, textarea:focus {
+  border-color: var(--pf-primary);
+  outline: 1px solid var(--pf-primary);   /* M3's 2px focused outline */
+  outline-offset: -2px;
+}
+input[type=checkbox] {
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  accent-color: var(--pf-primary);
+}
+input.mono { font-family: var(--pf-font-mono); letter-spacing: .02em; }
+
+form.stack label {
+  display: block;
+  margin: var(--pf-space-4) 0 var(--pf-space-1);
+  font: var(--pf-title-small);
+}
+form.stack label.plainlabel { font: var(--pf-body-medium); margin: var(--pf-space-1) 0; }
+form.stack label.plainlabel input[type=checkbox] { width: 18px; }
+form.stack > :first-child { margin-top: 0; }
+/* Two forms in one card are two separate decisions -- renew and suspend, on the
+   key page -- and a button one line above the next form's label reads as that
+   form's. */
+form.stack + form.stack {
+  margin-top: var(--pf-space-5);
+  padding-top: var(--pf-space-5);
+  border-top: 1px solid var(--pf-outline-variant);
+}
+
+.filters {
+  display: flex;
+  gap: var(--pf-space-3);
+  align-items: flex-end;
+  flex-wrap: wrap;
+  margin-bottom: var(--pf-space-4);
+}
+.filters label {
+  font: var(--pf-label-medium);
+  color: var(--pf-on-surface-variant);
+  display: block;
+  margin-bottom: var(--pf-space-1);
+}
+.filters select, .filters input { min-width: 190px; }
+/* A filter row is baseline-aligned, so its button has to be as tall as the
+   selects beside it or it sits a few pixels low. */
+.filters .button, .filters button { min-height: 44px; margin-bottom: 0; }
+
+/* --- the key-lifecycle stepper -------------------------------------------- */
+
+.steps { list-style: none; margin: 0; padding: 0; }
+.steps li {
+  border-left: 3px solid var(--pf-outline-variant);
+  padding: 0 0 var(--pf-space-5) var(--pf-space-5);
+  margin-left: var(--pf-space-2);
+  position: relative;
+}
+.steps li.done { border-color: var(--pf-success); }
+.steps li.now { border-color: var(--pf-primary); }
+.steps li .title { font: var(--pf-title-medium); }
+.steps li .body {
+  color: var(--pf-on-surface-variant);
+  margin: var(--pf-space-1) 0 var(--pf-space-3);
+  max-width: 70ch;
+}
+
+/* --- fingerprints and JSON -------------------------------------------------
+   A fingerprint is compared against paper, character by character, by a human
+   who is deciding whether to trust a bank's key. It gets its own block, its
+   own generous line height and its own word spacing, because that comparison
+   is the entire trust decision on `/keys/bank-keys`. */
+
+.fingerprint {
+  display: block;
+  font-family: var(--pf-font-mono);
+  font-size: 14px;
+  line-height: 1.9;
+  word-spacing: .16em;
+  overflow-wrap: anywhere;
+  padding: var(--pf-space-2) var(--pf-space-3);
+  border: 1px solid var(--pf-outline-variant);
+  border-radius: var(--pf-corner-sm);
+  background: var(--pf-surface-lowest);
+  color: var(--pf-on-surface);
+}
+
+pre.json {
+  margin: 0;
+  padding: var(--pf-space-3);
+  border: 1px solid var(--pf-outline-variant);
+  border-radius: var(--pf-corner-sm);
+  background: var(--pf-surface-lowest);
+  color: var(--pf-on-surface);
+  font-size: 13px;
+  overflow-x: auto;
+}
+
+details > summary { cursor: pointer; }
+td > details > summary { color: var(--pf-primary); }
+
+/* --- the printable INI letter ----------------------------------------------
+   On screen a sheet of paper; on paper, nothing but the document. It is pinned
+   to the light palette in both themes: this page is printed and signed, and a
+   dark letter is a page of toner. */
+
+.letter {
+  color-scheme: light;
+  background: #ffffff;
+  color: #1a1c1e;
+  padding: 34px 40px;
+  border: 1px solid var(--pf-outline-variant);
+  border-radius: var(--pf-corner-xs);
+  max-width: 800px;
+}
+.letter h1 { font: var(--pf-title-large); }
+.letter h2 { font: var(--pf-title-medium); }
+.letter h3 { color: #45474a; }
+.letter table.plain td { border-bottom-color: #e0e2e7; color: #1a1c1e; }
+.letter /* An id is one token and must not be broken across two lines: an operator
+   copying `ord_9d20e6b5` out of a table is the whole point of the column. When
+   that widens the table past its card, the card scrolls -- which is a
+   scrollbar rather than a mangled identifier. */
+td code, td > a > code { white-space: nowrap; }
+
+table.plain td:first-child { color: #45474a; }
+.letter .keyblock { margin: var(--pf-space-5) 0; page-break-inside: avoid; }
+.letter .numbers {
+  font-family: var(--pf-font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+  word-break: break-all;
+  color: #45474a;
+}
+.letter .fingerprint { background: #f7f9fe; border-color: #c4c6ca; color: #1a1c1e; }
+.letter .sign {
+  margin-top: 40px;
+  border-top: 1px solid #1a1c1e;
+  width: 300px;
+  padding-top: var(--pf-space-2);
+  color: #45474a;
+  font: var(--pf-body-small);
+}
+
+@media print {
+  .letter { border: none; padding: 0; max-width: none; }
+}
+
+/* --- the bank's own words --------------------------------------------------
+   A `ReportText`, an EBICS return-code report and a `pain.002` reason are the
+   bank's sentences in the bank's language, and this console shows them
+   verbatim in all six of its own. The label is what makes that legible rather
+   than merely true: without it, a German sentence on a Polish page reads as a
+   translation somebody got wrong. `translate="no"` in the markup asks the
+   browser's page translation to leave it alone for the same reason. */
+
+.pf-bank-quote { display: inline-flex; gap: var(--pf-space-2); align-items: baseline; flex-wrap: wrap; }
+.pf-bank-label {
+  flex: none;
+  padding: 0 var(--pf-space-2);
+  border-radius: var(--pf-corner-full);
+  background: var(--pf-surface-highest);
+  color: var(--pf-on-surface-variant);
+  font: var(--pf-label-small);
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.pf-bank-text {
+  border-left: 2px solid var(--pf-outline-variant);
+  padding-left: var(--pf-space-2);
+  font-style: italic;
+}

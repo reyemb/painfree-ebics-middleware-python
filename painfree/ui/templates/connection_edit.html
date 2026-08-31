@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{# One macro for both schemes: two field groups written twice would be two
+   groups that eventually differ, and a `ServiceOption` offered for normal and
+   not for instant is a bank that cannot be configured. #}
+{% macro code_slot(prefix, label, key, code) %}
+  <label>{{ label }}
+    <input type="text" name="{{ prefix }}_{{ key }}"
+           value="{{ code.value if code else '' }}">
+    <select name="{{ prefix }}_{{ key }}_kind">
+      <option value="cd" {{ 'selected' if not (code and code.proprietary) else '' }}>{{ t('schemes.as_code') }}</option>
+      <option value="prtry" {{ 'selected' if code and code.proprietary else '' }}>{{ t('schemes.as_proprietary') }}</option>
+    </select></label>
+{% endmacro %}
+{% macro scheme_fields(prefix, profile) %}
+  <label>{{ t('schemes.service_name') }}
+    <input type="text" name="{{ prefix }}_service_name" maxlength="3"
+           value="{{ profile.service_name }}"></label>
+  <label>{{ t('schemes.service_option') }}
+    <input type="text" name="{{ prefix }}_service_option" maxlength="10"
+           value="{{ profile.service_option or '' }}"></label>
+  <label>{{ t('schemes.scope') }}
+    <input type="text" name="{{ prefix }}_scope" maxlength="3"
+           value="{{ profile.scope or '' }}"></label>
+  {{ code_slot(prefix, t('schemes.service_level'), 'service_level', profile.service_level) }}
+  {{ code_slot(prefix, t('schemes.local_instrument'), 'local_instrument', profile.local_instrument) }}
+  {{ code_slot(prefix, t('schemes.category_purpose'), 'category_purpose', profile.category_purpose) }}
+{% endmacro %}
+{% block title %}{{ t('connection.edit') }} {{ connection.connection_id }} — painfree{% endblock %}
+{% block body %}
+<h1>{{ t('connection.edit') }} <code>{{ connection.connection_id }}</code></h1>
+<p class="lede">{{ t('connection_edit.lede') }}</p>
+
+<div class="card warn">
+  <strong>{{ t('connection_edit.host_url_warning') }}</strong>
+  {{ t('connection_edit.host_url_warning_body') }}
+</div>
+
+<form class="stack card" method="post" action="/ui/connections/{{ connection.connection_id }}/edit">
+  <label>{{ t('connections.host_url') }}<input type="url" name="host_url" required value="{{ connection.host_url }}"></label>
+  <label>{{ t('connection_new.letter_digest') }}
+    <select name="letter_digest">
+      <option value="public_key" {{ 'selected' if connection.letter_digest.value == 'public_key' else '' }}>{{ t('connection_edit.digest_public_key') }}</option>
+      <option value="certificate" {{ 'selected' if connection.letter_digest.value == 'certificate' else '' }}>{{ t('connection_edit.digest_certificate') }}</option>
+    </select></label>
+  <h3>{{ t('connection.product') }}</h3>
+  <label>{{ t('connection_new.product_name') }}<input type="text" name="product_name" value="{{ connection.product.name if connection.product else '' }}"></label>
+  <label>{{ t('connection_new.product_language') }}<input type="text" name="product_language" maxlength="2"
+         value="{{ connection.product.language if connection.product else '' }}"></label>
+  <label>{{ t('connection_new.product_institute') }}<input type="text" name="product_institute"
+         value="{{ connection.product.institute if connection.product and connection.product.institute else '' }}"></label>
+  <h3>{{ t('schemes.heading') }}</h3>
+  <p class="hint">{{ t('schemes.lede') }}</p>
+  <label>{{ t('schemes.default') }}
+    <select name="scheme_default">
+      {% for name in scheme_names %}
+      <option value="{{ name }}" {{ 'selected' if name == connection.schemes.default.value else '' }}>{{ name }} &ndash; {{ t('scheme.' ~ name) }}</option>
+      {% endfor %}
+    </select></label>
+  <label>{{ t('schemes.refusal_codes') }}
+    <input type="text" name="instant_refusal_codes"
+           value="{{ connection.schemes.instant_refusal_codes | join(' ') }}"></label>
+  <p class="hint">{{ t('schemes.refusal_codes_hint') }}</p>
+
+  <h4>{{ t('schemes.normal_heading') }}</h4>
+  <p class="hint">{{ t('schemes.btf_hint') }}</p>
+  {{ scheme_fields('normal', connection.schemes.normal) }}
+
+  <h4>{{ t('schemes.instant_heading') }}</h4>
+  <label class="checkbox"><input type="checkbox" name="instant_offered" value="1"
+         {{ 'checked' if connection.schemes.instant_configured else '' }}>
+    {{ t('schemes.instant_offered') }}</label>
+  {{ scheme_fields('instant', connection.schemes.instant or default_instant) }}
+  <label>{{ t('schemes.ceiling') }}
+    <input type="text" name="instant_max_amount" inputmode="decimal"
+           value="{{ instant_ceiling }}"></label>
+  <p class="hint">{{ t('schemes.ceiling_hint') }}</p>
+
+  <div class="actions">
+    <button type="submit">{{ t('connection_edit.save') }}</button>
+    <a class="button secondary" href="/ui/connections/{{ connection.connection_id }}">{{ t('common.cancel') }}</a>
+  </div>
+</form>
+{% endblock %}

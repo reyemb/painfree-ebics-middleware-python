@@ -1,0 +1,27 @@
+{# The bank's own words, shown as the bank's own words.
+
+   A `ReportText`, an EBICS return-code report and a `pain.002` status reason
+   arrive in whatever language the bank chose -- German from a Swiss bank,
+   French from another, English from a third -- and none of them is ours to
+   translate. Rewriting one would be this console telling an operator that the
+   bank said something it did not, which is the one sentence on the page that
+   has to be exactly true when a payment has been refused.
+
+   So it is shown verbatim, marked as a quotation of the bank, and carries
+   `translate="no"` so that a browser's own page translation leaves it alone
+   too. Our gloss may sit beside the *code*; the text itself is untouched. #}
+
+{% macro words(value) %}
+{% if value %}
+<span class="pf-bank-quote">
+  <span class="pf-bank-label">{{ t('bank.verbatim') }}</span>
+  <span class="pf-bank-text" translate="no">{{ value }}</span>
+</span>
+{% else %}—{% endif %}
+{% endmacro %}
+
+{# The same, inline and without the label, for a cell that already sits under a
+   column heading saying whose words these are. #}
+{% macro quiet(value) %}
+{% if value %}<span class="pf-bank-text" translate="no">{{ value }}</span>{% endif %}
+{% endmacro %}

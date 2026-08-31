@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% import "_bank.html" as bank with context %}
+{% block title %}{{ order.order_id }} — painfree{% endblock %}
+{% block body %}
+<h1><code>{{ order.order_id }}</code></h1>
+<p class="lede">
+  <span class="tag {{ order.state.value }}">{{ order.state.value }}</span>
+  {{ t('state.' ~ order.state.value) }}
+</p>
+
+{% if replayed %}
+<div class="card good">
+  <strong>{{ t('order.requeued') }}</strong> {{ t('order.requeued_why') }}
+</div>
+{% endif %}
+
+<div class="card">
+{# The identifiers below are identifiers: `MsgId`, the idempotency key, the
+   order id and the IBANs are never translated and never reformatted. The
+   amount and the dates are, and only here -- the stored `pain.001` this row
+   was derived from carries `1234.56` and `2026-09-15` whatever this page
+   shows. #}
+<table class="plain">
+  <tr><td>{{ t('common.connection') }}</td><td><a href="/ui/connections/{{ order.connection_id }}"><code>{{ order.connection_id }}</code></a></td></tr>
+  <tr><td>{{ t('order.idempotency_key') }}</td><td><code>{{ order.idempotency_key }}</code></td></tr>
+  <tr><td>MsgId</td><td><code>{{ order.msg_id }}</code></td></tr>
+  <tr><td>{{ t('order.message_type') }}</td><td>{{ order.message_type }}</td></tr>
+  <tr><td>{{ t('order.transactions') }}</td><td>{{ order.transaction_count | count }}</td></tr>
+  <tr><td>{{ t('order.control_sum') }}</td><td>{{ order.control_sum | amount(order.currency) }}</td></tr>
+  <tr><td>{{ t('order.requested_execution') }}</td><td>{{ order.requested_execution_date | day }}</td></tr>
+  {# `normal`, `instant` and `instant_or_normal` are the contract's own values
+     and are shown untranslated beside the word for them, for the reason the
+     order states are. #}
+  <tr><td>{{ t('order.scheme') }}</td><td>
+    <code>{{ order.scheme.value }}</code> {{ t('scheme.' ~ order.scheme.value) }}
+    {% if order.downgraded %}<span class="tag failed">{{ t('order.downgraded') }}</span>{% endif %}
+  </td></tr>
+  <tr><td>{{ t('order.requested_scheme') }}</td><td>
+    <code>{{ order.requested_scheme.value }}</code>
+    {{ t('scheme.' ~ order.requested_scheme.value) }}</td></tr>
+  <tr><td>{{ t('order.scheme_reason') }}</td><td>
+    {% if order.scheme_reason %}<code>{{ order.scheme_reason }}</code>
+    {{ t.maybe('scheme_reason.' ~ order.scheme_reason.split(':')[0], '') }}
+    {% else %}—{% endif %}</td></tr>
+  <tr><td>{{ t('order.bank_order_id') }}</td><td>{{ order.bank_order_id or '—' }}</td></tr>
+  <tr><td>{{ t('orders.return_code') }}</td><td>{% if order.return_code %}<code>{{ order.return_code }}</code>{% else %}—{% endif %}</td></tr>
+  <tr><td>{{ t('orders.report_text') }}</td><td>{{ bank.words(order.report_text) }}</td></tr>
+  <tr><td>{{ t('order.attempts') }}</td><td>{{ order.attempts | count }}</td></tr>
+  <tr><td>{{ t('orders.accepted') }}</td><td>{{ order.accepted_at | moment }}</td></tr>
+  <tr><td>{{ t('order.last_change') }}</td><td>{{ order.updated_at | moment }}</td></tr>
+</table>
+<p class="hint">{{ t('order.not_shown') }}</p>
+{% if may('orders:replay') and replayable %}
+<div class="actions"><a class="button" href="/ui/orders/{{ order.order_id }}/replay">{{ t('order.replay') }}</a></div>
+{% endif %}
+</div>
+
+<h2>{{ t('order.attempts_heading') }}</h2>
+<div class="card">
+{# One row per message this service built for the order. An order that fell
+   back has two: what the bank refused, and what went instead. The BTF and the
+   `PmtTpInf` sit side by side because reading them together is how an operator
+   checks that the announcement and the document agreed. #}
+<table>
+  <tr><th>{{ t('order.attempt_no') }}</th><th>{{ t('order.scheme') }}</th>
+      <th>{{ t('common.state') }}</th><th>MsgId</th>
+      <th>{{ t('order.attempt_btf') }}</th>
+      <th>{{ t('order.attempt_payment_type') }}</th>
+      <th>{{ t('orders.return_code') }}</th>
+      <th>{{ t('order.attempt_reason') }}</th></tr>
+  {% for attempt in attempts %}
+  <tr>
+    <td>{{ attempt.attempt_no | count }}</td>
+    <td><code>{{ attempt.scheme.value }}</code><br>
+        <small>{{ t('scheme.' ~ attempt.scheme.value) }}</small></td>
+    <td><span class="tag {{ attempt.state }}">{{ attempt.state }}</span><br>
+        <small>{{ t('scheme_state.' ~ attempt.state) }}</small></td>
+    <td><code>{{ attempt.msg_id }}</code></td>
+    <td><code>{{ attempt.btf_summary }}</code></td>
+    <td>{% if attempt.payment_type %}<code>{{ attempt.payment_type }}</code>
+        {% else %}{{ t('schemes.none') }}{% endif %}</td>
+    <td>{% if attempt.return_code %}<code>{{ attempt.return_code }}</code><br>
+        <small>{{ bank.quiet(attempt.report_text) }}</small>{% else %}—{% endif %}</td>
+    <td>{% if attempt.reason %}<code>{{ attempt.reason }}</code>{% else %}—{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table>
+<p class="hint">{{ t('order.attempts_hint') }}</p>
+</div>
+
+<h2>{{ t('order.bank_reported') }}</h2>
+<div class="card">
+{% if order.bank_status %}
+<table class="plain">
+  <tr><td>{{ t('order.status') }}</td><td>
+    <code>{{ order.bank_status }}</code>
+    {% set known = status_codes.get(order.bank_status) %}
+    {% if known %}{{ known.name }}: {{ t.maybe('status_code.' ~ order.bank_status, known.meaning) }}{% endif %}
+  </td></tr>
+  <tr><td>{{ t('order.reason_code') }}</td><td>{% if order.status_reason_code %}<code>{{ order.status_reason_code }}</code>{% else %}—{% endif %}</td></tr>
+  <tr><td>{{ t('order.reason_text') }}</td><td>{{ bank.words(order.status_reason_text) }}</td></tr>
+  <tr><td>{{ t('order.reported_at') }}</td><td>{{ order.status_reported_at | moment }}</td></tr>
+</table>
+<p class="hint">{{ t('bank.note') }}</p>
+{% else %}
+<p class="empty">{{ t('order.no_pain002') }}</p>
+{% endif %}
+{% if reports %}
+<table>
+  <tr><th>{{ t('order.status_report') }}</th><th>{{ t('order.group_status') }}</th>
+      <th>{{ t('order.accepted_count') }}</th><th>{{ t('order.rejected_count') }}</th>
+      <th>{{ t('order.reason') }}</th><th>{{ t('order.ingested') }}</th></tr>
+  {% for report in reports %}
+  <tr>
+    <td><a href="/ui/statements/{{ report.statement_id }}"><code>{{ report.statement_id }}</code></a><br>
+        <span class="hint">{{ report.message_type }}</span></td>
+    <td>{% if report.outcome.status %}<code>{{ report.outcome.status }}</code>{% else %}—{% endif %}
+        {% if not report.outcome.decides %}<span class="tag created">{{ t('order.no_change') }}</span>{% endif %}</td>
+    <td>{{ report.outcome.accepted | count }}</td>
+    <td>{{ report.outcome.rejected | count }}</td>
+    <td>{% if report.outcome.reason_code %}<code>{{ report.outcome.reason_code }}</code> {% endif %}{{ bank.quiet(report.outcome.reason_text) }}</td>
+    <td>{{ report.ingested_at | moment }}</td>
+  </tr>
+  {% endfor %}
+</table>
+<p class="hint">{{ t('order.reports_not_shown') }}
+<a href="/ui/status-codes">{{ t('order.status_code_page') }}</a>.</p>
+{% endif %}
+</div>
+
+<h2>{{ t('order.what_happened') }}</h2>
+<div class="card">
+{% if events %}
+<table>
+  <tr><th>{{ t('common.when') }}</th><th>{{ t('order.event') }}</th>
+      <th>{{ t('order.who') }}</th><th>{{ t('error.detail') }}</th></tr>
+  {% for event in events %}
+  <tr>
+    <td>{{ event.occurred_at | moment }}</td>
+    <td><code>{{ event.action }}</code>
+        {% if event.outcome != 'success' %}<span class="tag failed">{{ event.outcome }}</span>{% endif %}</td>
+    <td>{{ event.actor_type }} / {{ event.actor_id }}</td>
+    <td><pre class="json">{{ event.detail | pretty_json }}</pre></td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="empty">{{ t('order.nothing_recorded') }}</p>
+{% endif %}
+</div>
+{% endblock %}

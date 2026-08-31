@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}{{ t('webhooks.title') }} — painfree{% endblock %}
+{% block body %}
+<h1>{{ t('webhooks.heading') }}</h1>
+<p class="lede">{{ t('webhooks.lede') }}</p>
+
+{# The whole reason an operator opens this page. Above the table, before any
+   filter, and unmissable: a parked endpoint is receiving nothing. #}
+{% if parked %}
+<div class="card bad">
+  <h2>{{ t('webhooks.parked_heading', count=parked | length) }}</h2>
+  <p>{{ t('webhooks.parked_why') }}</p>
+  <ul>
+    {% for row in parked %}
+    <li><a href="/ui/webhooks/{{ row.subscription_id }}">{{ row.url }}</a>:
+        {{ t('webhooks.parked_at', when=row.parked_at | moment) }},
+        {{ t('webhooks.waiting_events', count=owed[row.subscription_id]) }}
+        {% if row.last_error %}<br><small class="mono">{{ row.last_error }}</small>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<form class="filters" method="get" action="/ui/webhooks">
+  <div><label for="connection_id">{{ t('common.connection') }}</label>
+    <select id="connection_id" name="connection_id">
+      <option value="">{{ t('common.every_connection') }}</option>
+      {% for row in connections %}
+      <option value="{{ row.connection_id }}" {{ 'selected' if row.connection_id == selected_connection else '' }}>{{ row.connection_id }}</option>
+      {% endfor %}
+    </select></div>
+  <button type="submit" class="secondary">{{ t('common.filter') }}</button>
+  {% if may('webhooks:manage') %}
+  <a class="button" href="/ui/webhooks/new">{{ t('webhooks.register') }}</a>
+  {% endif %}
+</form>
+
+<div class="card">
+{% if subscriptions %}
+<table>
+  <tr><th>{{ t('webhooks.endpoint') }}</th><th>{{ t('webhooks.events') }}</th>
+      <th>{{ t('common.connection') }}</th><th>{{ t('webhooks.health') }}</th>
+      <th>{{ t('webhooks.last_delivery') }}</th><th>{{ t('webhooks.waiting') }}</th>
+      <th>{{ t('webhooks.secret') }}</th></tr>
+  {% for row in subscriptions %}
+  <tr>
+    <td><a href="/ui/webhooks/{{ row.subscription_id }}">{{ row.url }}</a>
+        {% if row.description %}<br><small>{{ row.description }}</small>{% endif %}
+        <br><small class="mono">{{ row.subscription_id }}</small></td>
+    <td><small class="mono">{{ row.event_types | join(', ') }}</small></td>
+    <td>{% if row.connection_id %}<code>{{ row.connection_id }}</code>{% else %}<small>{{ t('common.every_connection') }}</small>{% endif %}</td>
+    <td><span class="tag {{ row.health }}">{{ row.health }}</span>
+        {% if row.consecutive_failures %}
+        <br><small>{{ t('webhooks.exhausted', count=row.consecutive_failures) }}</small>
+        {% endif %}</td>
+    <td>{{ row.last_delivery_at | moment }}
+        {% if row.last_status %}<br><small class="mono">HTTP {{ row.last_status }}</small>{% endif %}</td>
+    <td>{{ owed[row.subscription_id] | count }}</td>
+    <td>{{ t('webhooks.generation', number=row.secret_generation) }}
+        {% if row.rotating %}<br><span class="tag failing">{{ t('webhooks.rotating') }}</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="empty">{{ t('webhooks.empty') }}</p>
+{% endif %}
+</div>
+{% endblock %}

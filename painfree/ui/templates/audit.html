@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}{{ t('audit.title') }} — painfree{% endblock %}
+{% block body %}
+<h1>{{ t('audit.heading') }}</h1>
+<p class="lede">{{ t('audit.lede') }}</p>
+
+<form class="filters" method="get" action="/ui/audit">
+  <div><label for="connection_id">{{ t('common.connection') }}</label>
+    <select id="connection_id" name="connection_id">
+      <option value="">{{ t('common.every_connection') }}</option>
+      {% for row in connections %}
+      <option value="{{ row.connection_id }}" {{ 'selected' if row.connection_id == filters.connection_id else '' }}>{{ row.connection_id }}</option>
+      {% endfor %}
+    </select></div>
+  <div><label for="actor_id">{{ t('audit.actor') }}</label>
+    <select id="actor_id" name="actor_id">
+      <option value="">{{ t('audit.anyone') }}</option>
+      {% for name in actors %}
+      <option value="{{ name }}" {{ 'selected' if name == filters.actor_id else '' }}>{{ name }}</option>
+      {% endfor %}
+    </select></div>
+  {# The action values are the audit contract's own vocabulary, read out of the
+     table. They are matched on by anything reading this trail and are never
+     translated. #}
+  <div><label for="action">{{ t('audit.action') }}</label>
+    <select id="action" name="action">
+      <option value="">{{ t('audit.every_action') }}</option>
+      {% for name in actions %}
+      <option value="{{ name }}" {{ 'selected' if name == filters.action else '' }}>{{ name }}</option>
+      {% endfor %}
+    </select></div>
+  <div><label for="outcome">{{ t('audit.outcome') }}</label>
+    <select id="outcome" name="outcome">
+      <option value="">{{ t('audit.either') }}</option>
+      <option value="success" {{ 'selected' if filters.outcome == 'success' else '' }}>{{ t('audit.success') }}</option>
+      <option value="failure" {{ 'selected' if filters.outcome == 'failure' else '' }}>{{ t('audit.failure') }}</option>
+    </select></div>
+  <div><label for="since">{{ t('audit.from') }}</label>
+    <input type="date" id="since" name="since" value="{{ filters.since }}"></div>
+  <div><label for="until">{{ t('audit.to') }}</label>
+    <input type="date" id="until" name="until" value="{{ filters.until }}"></div>
+  <div><label for="order_id">{{ t('orders.order') }}</label>
+    <input type="text" class="mono" id="order_id" name="order_id"
+           value="{{ filters.order_id }}" placeholder="ord_…"></div>
+  <button type="submit" class="secondary">{{ t('common.filter') }}</button>
+  <a class="button secondary" href="/ui/audit">{{ t('audit.clear') }}</a>
+</form>
+
+<div class="card">
+{% if events %}
+<table>
+  <tr><th>{{ t('common.when') }}</th><th>{{ t('audit.action') }}</th>
+      <th>{{ t('order.who') }}</th><th>{{ t('audit.concerns') }}</th>
+      <th>{{ t('error.detail') }}</th></tr>
+  {% for row in events %}
+  <tr>
+    <td>{{ row.occurred_at | moment }}
+        <br><small class="mono">#{{ row.seq }}</small></td>
+    <td><span class="mono">{{ row.action }}</span>
+        <br><span class="tag {{ 'acknowledged' if row.outcome == 'success' else 'failed' }}">{{ row.outcome }}</span></td>
+    <td>{{ row.actor_id }}
+        <br><small>{{ row.actor_type }}</small></td>
+    <td>
+      {# The point of the page: from "something happened" to the thing it
+         happened to, without copying an id out of a JSON blob. Only targets
+         this reader may actually open are linked. #}
+      {% if links[row.event_id] %}
+        {% for link in links[row.event_id] %}
+        <a href="{{ link.href }}">{{ t(link.label_key) }}</a>
+        <br><small class="mono">{{ link.value }}</small>
+        {% endfor %}
+      {% else %}
+        <small class="empty">{{ t('audit.nothing_addressable') }}</small>
+      {% endif %}
+      {% if row.request_id %}<br><small class="mono">req {{ row.request_id }}</small>{% endif %}
+      {% if row.idempotency_key %}<br><small class="mono">key {{ row.idempotency_key }}</small>{% endif %}
+    </td>
+    <td>
+      {% if row.detail %}
+      <details>
+        <summary><small>{{ t('audit.field_count', count=row.detail | length) }}</small></summary>
+        <pre class="json">{{ row.detail | pretty_json }}</pre>
+      </details>
+      {% else %}
+      <small class="empty">—</small>
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="empty">{{ t('audit.empty') }}</p>
+{% endif %}
+</div>
+
+{% if older %}
+{# A cursor on the append sequence rather than an offset: rows arrive while the
+   page is being read, and an offset would show one twice and skip another. #}
+<p><a class="button secondary" href="/ui/audit?before={{ older }}{% for name, value in filters.items() %}{% if value %}&amp;{{ name }}={{ value | urlencode }}{% endif %}{% endfor %}">{{ t('audit.older') }}</a></p>
+{% endif %}
+
+<h2>{{ t('audit.reading_a_row') }}</h2>
+<div class="card">
+<p>{{ t('audit.reading_a_row_ids') }}</p>
+<p>{{ t('audit.reading_a_row_redaction') }}</p>
+</div>
+{% endblock %}

@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}{{ t('accounts.title') }} — painfree{% endblock %}
+{% block body %}
+<h1>{{ t('accounts.heading') }}</h1>
+<p class="lede">{{ t('accounts.lede') }}</p>
+
+{% if auth_mode != 'basic' %}
+<p class="lede"><strong>{{ t('accounts.other_mode') }}</strong></p>
+{% endif %}
+
+<div class="card">
+<h2>{{ t('accounts.list_heading') }}</h2>
+{% if accounts %}
+<table>
+  <tr><th>{{ t('access.subject') }}</th><th>{{ t('access.name') }}</th>
+      <th>{{ t('api.role') }}</th><th>{{ t('accounts.password_set') }}</th>
+      <th>{{ t('accounts.status') }}</th></tr>
+  {% for row in accounts %}
+  <tr>
+    {# The subject is the key every grant names. It is an identifier: never
+       translated, never reformatted. #}
+    <td><a href="/ui/access/{{ row.subject }}"><code>{{ row.subject }}</code></a></td>
+    <td>{{ row.display_name or '—' }}</td>
+    <td><span class="tag {{ 'operator' if row.role.value == 'admin' else 'viewer' }}">{{ row.role.value }}</span></td>
+    <td>{{ row.password_changed_at | moment }}</td>
+    <td>{% if row.disabled %}{{ t('accounts.suspended') }}{% else %}{{ t('accounts.active') }}{% endif %}</td>
+  </tr>
+  <tr>
+    <td colspan="5">
+      <div class="actions">
+        <form method="post" action="/ui/accounts/{{ row.subject }}/password">
+          {# The account the password belongs to, present and hidden. A
+             password field with no username beside it is a field a password
+             manager files under the wrong account, and Chrome says so in the
+             console -- which is how this was found. The view ignores the
+             field: the subject is in the path. #}
+          <input type="text" name="account" value="{{ row.subject }}"
+                 autocomplete="username" class="visually-hidden"
+                 tabindex="-1" aria-hidden="true" readonly>
+          <input type="password" name="password" autocomplete="new-password"
+                 minlength="{{ minimum_password_length }}" required
+                 aria-label="{{ t('accounts.new_password') }}"
+                 placeholder="{{ t('accounts.new_password') }}">
+          <button type="submit">{{ t('accounts.set_password') }}</button>
+        </form>
+        <form method="post" action="/ui/accounts/{{ row.subject }}/role">
+          <select name="role">
+            {% for name in roles %}
+            <option value="{{ name }}"{{ ' selected' if name == row.role.value else '' }}>{{ name }}</option>
+            {% endfor %}
+          </select>
+          <button type="submit" class="secondary">{{ t('accounts.change_role') }}</button>
+        </form>
+        <form method="post" action="/ui/accounts/{{ row.subject }}/suspend">
+          <input type="hidden" name="disabled" value="{{ 'false' if row.disabled else 'true' }}">
+          <button type="submit" class="secondary">
+            {% if row.disabled %}{{ t('accounts.resume') }}{% else %}{{ t('accounts.suspend') }}{% endif %}</button>
+        </form>
+        <form method="post" action="/ui/accounts/{{ row.subject }}/delete">
+          <input type="hidden" name="confirm" value="delete">
+          <button type="submit" class="secondary">{{ t('accounts.delete') }}</button>
+        </form>
+      </div>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+<p><small>{{ t('accounts.delete_keeps_grants') }}</small></p>
+{% else %}
+<p class="empty">{{ t('accounts.none') }}</p>
+{% endif %}
+</div>
+
+<div class="card">
+<h2>{{ t('accounts.add_heading') }}</h2>
+<form class="stack" method="post" action="/ui/accounts">
+  <label>{{ t('access.subject') }}
+    <span class="hint">{{ t('accounts.subject_hint') }}</span>
+    <input type="text" name="subject" required maxlength="255"
+           autocomplete="username"></label>
+  <label>{{ t('access.name') }}
+    <input type="text" name="display_name" maxlength="255"
+           autocomplete="name"></label>
+  <label>{{ t('sign_in.password') }}
+    <span class="hint">{{ t('accounts.password_hint') }}</span>
+    <input type="password" name="password" autocomplete="new-password"
+           minlength="{{ minimum_password_length }}" required></label>
+  <label>{{ t('api.role') }}
+    <select name="role">
+      {% for name in roles %}
+      <option value="{{ name }}">{{ name }}</option>
+      {% endfor %}
+    </select></label>
+  <div class="actions"><button type="submit">{{ t('accounts.add') }}</button></div>
+</form>
+</div>
+
+<div class="card">
+<h2>{{ t('accounts.lockouts_heading') }}</h2>
+<p>{{ t('accounts.lockouts_why') }}</p>
+{% if lockouts %}
+<table>
+  <tr><th>{{ t('accounts.lockout_scope') }}</th><th>{{ t('accounts.lockout_value') }}</th>
+      <th>{{ t('accounts.failures') }}</th><th>{{ t('accounts.locked_until') }}</th><th></th></tr>
+  {% for row in lockouts %}
+  <tr>
+    <td>{% if row.scope == 'subject' %}{{ t('accounts.scope_subject') }}
+        {% else %}{{ t('accounts.scope_source') }}{% endif %}</td>
+    <td><code>{{ row.value }}</code></td>
+    <td>{{ row.failures }}</td>
+    <td>{% if row.locked() %}{{ row.locked_until | moment }}{% else %}—{% endif %}</td>
+    <td>
+      <form method="post" action="/ui/accounts/lockouts/{{ row.scope }}/{{ row.value }}/clear">
+        <input type="hidden" name="confirm" value="clear">
+        <button type="submit" class="secondary">{{ t('accounts.clear_lockout') }}</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="empty">{{ t('accounts.no_lockouts') }}</p>
+{% endif %}
+</div>
+{% endblock %}

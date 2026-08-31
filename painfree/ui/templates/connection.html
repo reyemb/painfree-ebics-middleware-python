@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% import "_jobs.html" as parts with context %}
+{% import "_bank.html" as bank with context %}
+{% block title %}{{ connection.connection_id }} — painfree{% endblock %}
+{% block body %}
+<h1><code>{{ connection.connection_id }}</code></h1>
+<p class="lede">
+  <span class="tag {{ connection.key_state.value }}">{{ connection.key_state.value }}</span>
+  {{ t('key_state.' ~ connection.key_state.value) }}
+</p>
+
+{% if updated %}<div class="card good">{{ t('connection.updated') }}</div>{% endif %}
+{% if staged %}
+<div class="card warn">
+  <strong>{{ t('connection.staged') }}</strong>
+  {{ t('connection.staged_why') }}
+  <p class="actions"><a class="button" href="/ui/connections/{{ connection.connection_id }}/keys/bank-keys">{{ t('connection.compare') }}</a></p>
+</div>
+{% endif %}
+
+<div class="card">
+{# The three EBICS identifiers are what the bank knows this subscriber as. They
+   are identifiers, not prose: never translated, never reformatted. #}
+<table class="plain">
+  <tr><td>HostID</td><td><code>{{ connection.host_id }}</code></td></tr>
+  <tr><td>PartnerID</td><td><code>{{ connection.partner_id }}</code></td></tr>
+  <tr><td>UserID</td><td><code>{{ connection.user_id }}</code></td></tr>
+  <tr><td>{{ t('connections.host_url') }}</td><td class="mono">{{ connection.host_url }}</td></tr>
+  <tr><td>{{ t('connection.ebics_version') }}</td><td>{{ connection.ebics_version }}</td></tr>
+  <tr><td>{{ t('connection.product') }}</td><td>{{ connection.product.name if connection.product else '—' }}</td></tr>
+  <tr><td>{{ t('connection.letter_quotes') }}</td><td>{{ connection.letter_digest.value }}</td></tr>
+  <tr><td>INI</td><td>{% if connection.ini_sent %}{{ t('connection.sent_order_id') }}
+      <code>{{ connection.ini_order_id or '—' }}</code>{% else %}{{ t('connection.not_sent') }}{% endif %}</td></tr>
+  <tr><td>HIA</td><td>{% if connection.hia_sent %}{{ t('connection.sent_order_id') }}
+      <code>{{ connection.hia_order_id or '—' }}</code>{% else %}{{ t('connection.not_sent') }}{% endif %}</td></tr>
+  <tr><td>{{ t('connection.can_submit') }}</td><td>{{ t('common.yes') if connection.initialised else t('common.no') }}</td></tr>
+  <tr><td>{{ t('connection.registered') }}</td><td>{{ connection.created_at | moment }}</td></tr>
+</table>
+<div class="actions">
+  <a class="button" href="/ui/connections/{{ connection.connection_id }}/keys">{{ t('connection.key_lifecycle') }}</a>
+  {% if subscriber_keys %}
+  <a class="button secondary" href="/ui/connections/{{ connection.connection_id }}/letter">{{ t('connection.ini_letter') }}</a>
+  {% endif %}
+  {% if may('connections:write') %}
+  <a class="button secondary" href="/ui/connections/{{ connection.connection_id }}/edit">{{ t('connection.edit') }}</a>
+{% endif %}
+{% if principal and principal.admin %}
+  <a class="button secondary" href="/ui/connections/{{ connection.connection_id }}/access">{{ t('connection.who_has_access') }}</a>
+  {% endif %}
+</div>
+</div>
+
+<h2>{{ t('connection.payment_schemes') }}</h2>
+<div class="card">
+{# What this bank is told about a payment: the BTF triplet that announces the
+   upload, and the `PmtTpInf` inside the document. They are shown together
+   because a BTF claiming instant over a document that does not is refused with
+   a code that will not explain itself. #}
+<table>
+  <tr><th>{{ t('order.scheme') }}</th><th>{{ t('order.attempt_btf') }}</th>
+      <th>{{ t('order.attempt_payment_type') }}</th>
+      <th>{{ t('schemes.ceiling') }}</th></tr>
+  {% for name, profile in schemes %}
+  <tr>
+    <td><code>{{ name }}</code> {{ t('scheme.' ~ name) }}
+      {% if name == connection.schemes.default.value %}
+      <span class="tag ready">{{ t('schemes.default') }}</span>{% endif %}</td>
+    <td><code>{{ profile.btf_summary() }}</code></td>
+    <td>{% if profile.payment_type_summary() %}<code>{{ profile.payment_type_summary() }}</code>
+        {% else %}{{ t('schemes.none') }}{% endif %}</td>
+    <td>{% if profile.max_amount %}{{ profile.max_amount | amount('') }}{% else %}—{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% if not connection.schemes.instant_configured %}
+<p class="hint">{{ t('schemes.instant_unavailable') }}</p>
+{% endif %}
+<p class="hint">{{ t('schemes.refusal_codes') }}:
+  <code>{{ connection.schemes.instant_refusal_codes | join(' ') }}</code></p>
+</div>
+
+<h2>{{ t('connection.our_keys') }}</h2>
+<div class="card">
+{% if subscriber_keys %}{{ parts.key_table(subscriber_keys) }}
+{% else %}<p class="empty">{{ t('connection.no_keys') }}</p>{% endif %}
+</div>
+
+<h2>{{ t('connection.bank_keys') }}</h2>
+<div class="card">
+{% if bank_keys %}{{ parts.key_table(bank_keys) }}
+{% else %}<p class="empty">{{ t('connection.no_bank_keys') }}</p>{% endif %}
+</div>
+
+<h2>{{ t('connection.key_operations') }}</h2>
+<div class="card">{{ parts.job_table(jobs) }}</div>
+
+<h2>{{ t('connection.recent_orders') }}</h2>
+<div class="card">
+{% if may('payments:read') %}
+  {% if orders %}
+  <table>
+    <tr><th>{{ t('orders.order') }}</th><th>{{ t('common.state') }}</th>
+        <th>{{ t('connection.bank') }}</th><th>{{ t('orders.accepted') }}</th></tr>
+    {% for row in orders %}
+    <tr>
+      <td><a href="/ui/orders/{{ row.order_id }}"><code>{{ row.order_id }}</code></a></td>
+      <td><span class="tag {{ row.state.value }}">{{ row.state.value }}</span></td>
+      <td>{% if row.return_code %}<code>{{ row.return_code }}</code>
+          {{ bank.quiet(row.report_text) }}{% else %}—{% endif %}</td>
+      <td>{{ row.accepted_at | moment }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}<p class="empty">{{ t('connection.no_orders') }}</p>{% endif %}
+{% else %}
+<p class="empty">{{ t('connection.orders_need_scope') }}</p>
+{% endif %}
+</div>
+{% endblock %}

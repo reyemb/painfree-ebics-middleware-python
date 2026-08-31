@@ -1,0 +1,266 @@
+{# The one layout. Everything the console draws is inside this.
+
+   The app bar carries the icon at the far left and the name beside it; on the
+   right, right to left, the profile, the notifications and the theme toggle.
+   That order is the specification and it is expressed in the DOM rather than by
+   float, so a screen reader hears it in the same order a sighted reader sees it.
+
+   Navigation lives in the left drawer and nowhere else. On a narrow viewport
+   the drawer becomes a disclosure driven by a checkbox and a label -- no script
+   is involved, because navigation that needs JavaScript to appear is navigation
+   that is missing when a proxy strips a script. See `03-chrome.css`.
+
+   The language chooser sits in that right-hand cluster too, between the theme
+   toggle and the bell. It is six ordinary links back to the page the operator
+   is on, so it needs no route, no form and no script: the `?lang=` on the link
+   is what `painfree.ui.rendering` reads and answers with a cookie. Every string
+   on every page comes through `t(...)`, which is the console's whole
+   localisation surface -- and it stops there, because nothing on the wire is
+   allowed to know a locale exists. #}
+{% import "_icons.html" as icons %}
+<!doctype html>
+<html lang="{{ locale }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}painfree{% endblock %}</title>
+{# FIRST, and inline. It sets `data-theme` on <html> before any of <body> is
+   parsed, so a reload of a page whose theme was chosen shows that theme in its
+   first paint rather than flashing the default one. #}
+<script>{{ theme_script }}</script>
+{# The mark of `_icons.html`, as the tab icon. Inline, so the browser does not
+   ask for /favicon.ico -- a route this console does not have, which would be a
+   404 on every page in the developer console and a public path if it did.
+
+   The same three shapes as `icons.logo()`, and shapes are the point: an SVG
+   favicon is rendered by a code path that is under no obligation to have any
+   font at all, so the `<text>` element this replaces showed a blank blue tile
+   wherever `system-ui` did not resolve. Geometry always resolves. #}
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7.5' fill='%234568d0'/%3E%3Crect x='7.8' y='7' width='4' height='18' rx='2' fill='%23ffffff'/%3E%3Ccircle cx='17.4' cy='14' r='4.8' fill='none' stroke='%23ffffff' stroke-width='4'/%3E%3C/svg%3E">
+{% block head %}{% endblock %}
+<style>{{ stylesheet }}</style>
+</head>
+<body>
+<a class="pf-skip" href="#page">{{ t('chrome.skip') }}</a>
+
+{# The drawer's switch. Off screen, still focusable, still in the accessibility
+   tree: a keyboard reaches it with one Tab and opens it with Space. #}
+<input type="checkbox" id="pf-nav" class="visually-hidden pf-nav-switch"
+       aria-label="{{ t('chrome.show_navigation') }}">
+
+<header class="pf-app-bar">
+  {% if principal %}
+  <label for="pf-nav" class="pf-icon-button pf-nav-button" title="{{ t('chrome.navigation') }}">
+    <span class="pf-icon-menu">{{ icons.menu() }}</span>
+    <span class="pf-icon-close">{{ icons.close() }}</span>
+  </label>
+  {% endif %}
+
+  <a class="pf-brand" href="/ui/connections">
+    {{ icons.logo() }}
+    <span class="pf-brand-name">painfree</span>
+    <span class="pf-brand-sub">{{ t('chrome.subtitle') }}</span>
+  </a>
+
+  <div class="pf-app-bar-spacer"></div>
+
+  <div class="pf-app-bar-actions">
+    {# Right to left from the edge: profile, notifications, theme. So in the
+       document, left to right: theme, notifications, profile. #}
+    <div class="pf-theme-toggle" role="group" aria-label="{{ t('theme.group') }}">
+      <button type="button" class="pf-seg" data-theme-choice="system"
+              aria-pressed="true" title="{{ t('theme.system_title') }}">
+        {{ icons.theme_system() }}<span class="pf-seg-label">{{ t('theme.system') }}</span></button>
+      <button type="button" class="pf-seg" data-theme-choice="light"
+              aria-pressed="false" title="{{ t('theme.light') }}">
+        {{ icons.theme_light() }}<span class="pf-seg-label">{{ t('theme.light') }}</span></button>
+      <button type="button" class="pf-seg" data-theme-choice="dark"
+              aria-pressed="false" title="{{ t('theme.dark') }}">
+        {{ icons.theme_dark() }}<span class="pf-seg-label">{{ t('theme.dark') }}</span></button>
+    </div>
+
+    {# Six links, not a form and not a `<select>`: a link needs no route to
+       post to, and a `<select>` needs a script to act on a choice. Each one
+       carries the page's own query string, so switching language on a filtered
+       list keeps the filter. #}
+    <details class="pf-menu pf-language" name="pf-app-bar-menu">
+      <summary class="pf-icon-button"
+               aria-label="{{ t('lang.label') }}: {{ language_name }}">
+        {{ icons.language() }}
+        <span class="pf-lang-code">{{ locale | upper }}</span>
+      </summary>
+      <div class="pf-menu-panel">
+        <h2>{{ t('lang.label') }}</h2>
+        <ul class="pf-lang-list">
+          {% for choice in language_links %}
+          <li><a href="{{ choice.href }}" lang="{{ choice.code }}"
+                 {{ 'aria-current="true"' | safe if choice.current else '' }}>
+            <span class="pf-lang-tag">{{ choice.code | upper }}</span>
+            <span>{{ choice.name }}</span>
+          </a></li>
+          {% endfor %}
+        </ul>
+        <p class="pf-lang-note">{{ t('lang.note') }}</p>
+      </div>
+    </details>
+
+    {# `name` makes the two menus an exclusive pair: opening one closes the
+       other, in HTML, with no script and no Escape handler to forget. A browser
+       that does not know the attribute lets both stand open, which is what they
+       did before it existed. #}
+    <details class="pf-menu pf-notifications" name="pf-app-bar-menu">
+      <summary class="pf-icon-button"
+               aria-label="{{ t('alerts.aria', count=alert_total) }}">
+        {{ icons.bell() }}
+        {% if alert_total %}
+        <span class="pf-badge">{{ alert_total if alert_total < 100 else '99+' }}</span>
+        {% endif %}
+      </summary>
+      <div class="pf-menu-panel">
+        <h2>{{ t('alerts.heading') }}</h2>
+        {% if alerts %}
+        <ul class="pf-alerts">
+          {% for alert in alerts %}
+          <li><a class="pf-alert pf-alert-{{ alert.tone }}" href="{{ alert.href }}">
+            <span class="pf-alert-count">{{ alert.label }}</span>
+            <span>
+              <span class="pf-alert-title">{{ t(alert.title_key, **alert.values) }}</span>
+              <span class="pf-alert-why">{{ t(alert.why_key, **alert.values) }}</span>
+            </span>
+          </a></li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p>{{ t('alerts.none') }}</p>
+        {% endif %}
+      </div>
+    </details>
+
+    <details class="pf-menu pf-profile" name="pf-app-bar-menu">
+      <summary class="pf-icon-button pf-avatar" aria-label="{{ t('profile.label') }}">
+        {% if principal %}{{ (principal.display_name or principal.subject)[:2] | upper }}{% else %}?{% endif %}
+      </summary>
+      <div class="pf-menu-panel">
+        {% if principal %}
+        <h2>{{ principal.display_name or principal.subject }}</h2>
+        {% if principal.display_name and principal.display_name != principal.subject %}
+        <p class="pf-profile-subject">{{ principal.subject }}</p>
+        {% endif %}
+        <p>
+          {% if principal.admin %}
+            <span class="tag operator">admin</span>
+            {{ t('profile.admin') }}
+          {% elif principal.oversight %}
+            <span class="tag viewer">oversight</span>
+            {{ t('profile.oversight') }}
+          {% else %}
+            <span class="tag viewer">member</span>
+            {% if principal.grants %}
+              {{ t('profile.granted', count=principal.grants | length) }}
+            {% else %}
+              {{ t('profile.granted_none') }}
+            {% endif %}
+          {% endif %}
+        </p>
+        <div class="actions">
+          <a class="button secondary" href="/ui/api">{{ t('profile.what_you_hold') }}</a>
+          <a class="button secondary" href="/auth/logout">{{ t('profile.sign_out') }}</a>
+        </div>
+        {% else %}
+        <p>{{ t('profile.signed_out') }}</p>
+        <div class="actions"><a class="button" href="/auth/login">{{ t('profile.sign_in') }}</a></div>
+        {% endif %}
+      </div>
+    </details>
+  </div>
+</header>
+
+<div class="pf-shell">
+  {# No drawer before there is an identity. The sign-in and signed-out pages
+     are the two that render without one, and a navigation column whose every
+     entry answers `401` is not navigation. #}
+  {% if principal %}
+  <nav class="pf-drawer" aria-label="{{ t('nav.label') }}">
+    {# The nav paints the column; the inner box is what sticks. One element
+       cannot do both -- a sticky box is only as tall as its own content, so a
+       sticky drawer leaves the column unpainted below it on a long page. #}
+    <div class="pf-drawer-inner">
+    {% macro item(href, label, icon, active) %}
+    <li><a class="pf-nav-item" href="{{ href }}"
+           {{ 'aria-current="page"' | safe if active else '' }}>
+      {{ icon }}<span>{{ label }}</span>
+      {% if alert_sections.get(href) %}
+      <span class="pf-nav-count">{{ alert_sections[href] }}</span>
+      {% endif %}
+    </a></li>
+    {% endmacro %}
+
+    <div class="pf-drawer-heading">{{ t('nav.banking') }}</div>
+    <ul class="pf-nav">
+      {# No scope guard: the connection list is the answer to "what do I have
+         access to", which is the one question a member holding nothing has to
+         be able to ask. #}
+      {{ item('/ui/connections', t('nav.connections'), icons.connections(),
+              request.url.path.startswith('/ui/connections')) }}
+      {% if may('payments:read') %}
+      {{ item('/ui/orders', t('nav.orders'), icons.orders(),
+              request.url.path.startswith('/ui/orders')) }}
+      {% endif %}
+      {% if may('statements:read') %}
+      {{ item('/ui/statements', t('nav.statements'), icons.statements(),
+              request.url.path.startswith('/ui/statements')) }}
+      {% endif %}
+      {% if may('schedules:read') %}
+      {{ item('/ui/schedules', t('nav.schedules'), icons.schedules(),
+              request.url.path.startswith('/ui/schedules')) }}
+      {% endif %}
+    </ul>
+
+    {% if may('webhooks:read') %}
+    <div class="pf-drawer-heading">{{ t('nav.integration') }}</div>
+    <ul class="pf-nav">
+      {{ item('/ui/webhooks', t('nav.webhooks'), icons.webhooks(),
+              request.url.path.startswith('/ui/webhooks')) }}
+    </ul>
+    {% endif %}
+
+    {% if (principal and principal.admin) or may('audit:read') %}
+    <div class="pf-drawer-heading">{{ t('nav.deployment') }}</div>
+    <ul class="pf-nav">
+      {% if principal and principal.admin %}
+      {{ item('/ui/access', t('nav.access'), icons.access(),
+              request.url.path.startswith('/ui/access')) }}
+      {# Who may sign in at all. Shown in every mode, because a deployment
+         moving on or off an identity provider has accounts to prepare or to
+         clear out; the page itself says which mode is authenticating. #}
+      {{ item('/ui/accounts', t('nav.accounts'), icons.access(),
+              request.url.path.startswith('/ui/accounts')) }}
+      {% endif %}
+      {% if may('audit:read') %}
+      {{ item('/ui/audit', t('nav.audit'), icons.audit(),
+              request.url.path.startswith('/ui/audit')) }}
+      {% endif %}
+    </ul>
+    {% endif %}
+
+    <div class="pf-drawer-heading">{{ t('nav.reference') }}</div>
+    <ul class="pf-nav">
+      {% if may('payments:read') %}
+      {{ item('/ui/status-codes', t('nav.status_codes'), icons.status_codes(),
+              request.url.path.startswith('/ui/status-codes')) }}
+      {% endif %}
+      {# No scope guard: the developer page is what a caller who holds nothing
+         reads to find out what they would have needed. #}
+      {{ item('/ui/api', t('nav.api'), icons.api(),
+              request.url.path.startswith('/ui/api')) }}
+    </ul>
+    </div>
+  </nav>
+  {% endif %}
+
+  <main id="page">
+{% block body %}{% endblock %}
+  </main>
+</div>
+</body>
+</html>
