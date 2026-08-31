@@ -80,7 +80,7 @@ services:
       PAINFREE_MIGRATE_ON_STARTUP: "true"
       # Left empty unless `.env` names one, and empty means unset. A deployment
       # that configures an identity provider resolves to `oidc`; one that does
-      # not resolves to `basic` and authenticates against accounts it owns
+      # not resolves to `basic` and authenticates against accounts it owns.
       # Naming the mode in `.env` overrides both.
       PAINFREE_AUTH_MODE: ${PAINFREE_AUTH_MODE:-}
       # The statement `basic` mode refuses to start without: the `proxy` below

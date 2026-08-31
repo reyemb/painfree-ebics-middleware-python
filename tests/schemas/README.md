@@ -2,8 +2,8 @@
 
 These are **test** schemas, not runtime ones. Nothing in `painfree/` loads them,
 and a `camt` document a bank sends is *not* validated against a schema before it
-is ingested — refusing a
-statement on a schema quibble is worse than storing it.
+is ingested: refusing a statement on a schema quibble is worse than
+storing it.
 
 What they are for is the other direction: the fixtures in `tests/fixtures/` are
 written in this repository, so without an independent schema they would prove

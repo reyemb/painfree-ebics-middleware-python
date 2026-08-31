@@ -10,7 +10,7 @@
 
    THE COLOUR SYSTEM IS GENERATED, NOT PICKED. Each palette is a tonal ramp
    computed in OKLCH at a fixed hue and chroma, gamut-mapped by reducing chroma
-   the way HCT does, and every pair used for text was measured against WCAG --
+   the way HCT does, and every pair used for text was measured against WCAG.
    Tone numbers below are M3's: 0 is black, 100 is
    white, and a role names a tone rather than a colour so the dark theme is a
    different set of tones rather than an inverted light one.
