@@ -332,6 +332,8 @@
   "keys.common_name_hint": "Defaults to the UserID.",
   "keys.confirmed": "Confirmed. The accepted fingerprints are:",
   "keys.country": "Country",
+  "keys.custody_body": "The private halves are sealed with PAINFREE_KEY_ENCRYPTION_SECRET, a value that lives in one file on the host, deploy/secrets/custody_secret, and that no database backup contains. Lose it and nobody can read these keys again: this connection needs new keys, a new INI letter signed on paper and posted to the bank, and days before it can move money.",
+  "keys.custody_title": "Back up the custody secret before you generate",
   "keys.every_key": "every key of this subscriber",
   "keys.fetch_hpb": "Fetch HPB",
   "keys.fetch_hpb_again": "Fetch HPB again",

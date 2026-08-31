@@ -183,3 +183,94 @@ def test_an_audit_row_carries_the_connection_it_is_about(registry, audit):
     _register(registry)
     row = next(r for r in audit.recent() if r["action"] == "connection.registered")
     assert row["connection_id"] == "acme-ubs"
+
+
+# --- registering one over the JSON API ---------------------------------------
+#
+# The console had the only route that could register a connection, so a
+# deployment was rebuilt by retyping a bank's parameter sheet into a browser.
+# These hold the JSON route to the same rules the console route obeys: the same
+# scope, the same refusal on a duplicate, and no way to smuggle key material in.
+
+from fastapi.testclient import TestClient                          # noqa: E402
+
+from conftest import dev_credentials                               # noqa: E402
+from painfree.app import create_app                                # noqa: E402
+
+BODY = {"connection_id": "acme-sgkb", "host_id": "SGKBHOST",
+        "partner_id": "PARTNER1", "user_id": "USER1",
+        "host_url": "https://ebics.example.test/h005"}
+
+
+@pytest.fixture
+def api(settings):
+    app = create_app(settings)
+    with TestClient(app, headers=dev_credentials()) as client:
+        yield client
+
+
+def test_a_connection_can_be_registered_without_a_browser(api):
+    """The point of the route: six identifiers in, a registered subscriber out."""
+    response = api.post("/v1/connections", json=BODY)
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["connection_id"] == "acme-sgkb"
+    assert body["host_id"] == "SGKBHOST"
+    assert body["key_state"] == ebics3.KeyState.CREATED.value
+    assert body["initialised"] is False
+    # No keys were minted, and none can be: that is the worker's, and this
+    # process cannot open one.
+    assert "private_key" not in response.text and "secret" not in response.text
+
+
+def test_the_registration_is_the_one_the_list_returns(api):
+    """Both bodies come from one function, so a reader sees the same shape."""
+    created = api.post("/v1/connections", json=BODY).json()
+    listed = [row for row in api.get("/v1/connections").json()["connections"]
+              if row["connection_id"] == "acme-sgkb"]
+
+    assert listed == [created]
+
+
+def test_registering_the_same_id_twice_is_a_conflict(api):
+    """A retry does not quietly produce a second subscriber at the same bank."""
+    assert api.post("/v1/connections", json=BODY).status_code == 201
+    again = api.post("/v1/connections", json=BODY)
+
+    assert again.status_code == 409
+    assert again.json()["error"]["code"] == "conflict"
+
+
+def test_a_member_may_not_register_a_connection(api):
+    """`connections:write` is carried by no grant level, only by `admin`."""
+    response = api.post("/v1/connections", json=BODY,
+                        headers=dev_credentials(subject="mallory", roles="member"))
+
+    assert response.status_code == 403
+
+
+def test_an_identifier_the_bank_would_refuse_is_refused_by_the_api(api):
+    """Validated by the engine's own context rather than a second rule set."""
+    response = api.post("/v1/connections",
+                        json={**BODY, "host_id": "x" * 40})
+
+    assert response.status_code == 422, response.text
+
+
+def test_a_misspelled_field_is_refused_rather_than_dropped(api):
+    """A silently ignored `partnerid` is a connection that fails at INI."""
+    body = {**BODY}
+    body["partnerid"] = body.pop("partner_id")
+    response = api.post("/v1/connections", json=body)
+
+    assert response.status_code == 422
+
+
+def test_the_registration_is_in_the_audit_trail(api):
+    """Who registered which bank, kept where every other decision is kept."""
+    api.post("/v1/connections", json=BODY)
+    rows = api.get("/v1/audit", params={"connection_id": "acme-sgkb"}).json()
+
+    actions = [row["action"] for row in rows["events"]]
+    assert "connection.registered" in actions

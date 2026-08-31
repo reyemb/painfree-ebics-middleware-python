@@ -343,6 +343,8 @@
   "keys.common_name_hint": "Domyślnie UserID.",
   "keys.confirmed": "Potwierdzone. Przyjęte odciski to:",
   "keys.country": "Kraj",
+  "keys.custody_body": "Prywatne połowy są pieczętowane wartością PAINFREE_KEY_ENCRYPTION_SECRET, która znajduje się w jednym pliku na hoście, deploy/secrets/custody_secret, i której nie zawiera żadna kopia zapasowa bazy danych. Jej utrata oznacza, że nikt już nie odczyta tych kluczy: to połączenie będzie wymagać nowych kluczy, nowego listu INI podpisanego na papierze i wysłanego do banku oraz kilku dni, zanim znów zrealizuje płatności.",
+  "keys.custody_title": "Zrób kopię sekretu powierniczego przed wygenerowaniem",
   "keys.every_key": "każdy klucz tego abonenta",
   "keys.fetch_hpb": "Pobierz HPB",
   "keys.fetch_hpb_again": "Pobierz HPB ponownie",

@@ -61,7 +61,8 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Header, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
-from painfree import access, payments, schedule as schedules, sps, webhooks
+from painfree import (access, ebics3, payments, schedule as schedules, sps,
+                      webhooks)
 from painfree.authn import requires, requires_on
 from painfree.identity import Principal, Scope
 from painfree.logging import get_logger
@@ -195,6 +196,42 @@ def read_order(order_id: str, request: Request,
         return _order_body(_store(request), order)
 
 
+class ConnectionProduct(BaseModel):
+    """What this client calls itself to the bank. Optional, and rarely set."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: Annotated[str, Field(min_length=1, max_length=64)]
+    language: Annotated[str, Field(min_length=2, max_length=2)] = "de"
+    institute: Annotated[str, Field(max_length=64)] | None = None
+
+
+class ConnectionRegistration(BaseModel):
+    """The identifiers that come off a bank's parameter sheet.
+
+    None of them is secret and none of them is chosen here: the bank publishes
+    the host, the partner and the user. Keys are **not** in this body and never
+    will be. They are generated inside the worker, which is the only process
+    that can hold one.
+
+    ``extra="forbid"`` for the same reason a payment forbids it: a misspelled
+    `partner_id` accepted and dropped is a connection that fails at `INI`,
+    against a bank, days later.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    connection_id: Annotated[str, Field(min_length=1, max_length=64)]
+    host_id: Annotated[str, Field(min_length=1, max_length=35)]
+    partner_id: Annotated[str, Field(min_length=1, max_length=35)]
+    user_id: Annotated[str, Field(min_length=1, max_length=35)]
+    host_url: Annotated[str, Field(min_length=8, max_length=1024)]
+    #: Which half of the subscriber's key the INI letter carries a hash of.
+    #: The bank says which one it wants.
+    letter_digest: Annotated[str, Field(max_length=32)] | None = None
+    product: ConnectionProduct | None = None
+
+
 @router.get("/connections", tags=["connections"], summary="Bank connections")
 def list_connections(request: Request,
                      principal: Principal = Depends(requires()),
@@ -214,17 +251,67 @@ def list_connections(request: Request,
     way: a caller with no grants gets an empty array.
     """
     allowed, _ = access.restrict(principal)
-    return {"connections": [
-        {"connection_id": row.connection_id, "host_id": row.host_id,
-         "partner_id": row.partner_id, "user_id": row.user_id,
-         "host_url": row.host_url, "ebics_version": row.ebics_version,
-         "key_state": row.key_state.value, "initialised": row.initialised,
-         # What this connection will send, resolved rather than raw: a caller
-         # deciding whether to ask for `instant` needs the answer, not the
-         # subset somebody happened to override (`painfree.schemes`).
-         "payment_schemes": row.schemes.as_json(),
-         "created_at": row.created_at.isoformat()}
-        for row in request.app.state.connections.all(allowed)]}
+    return {"connections": [_connection_body(row) for row
+                            in request.app.state.connections.all(allowed)]}
+
+
+def _connection_body(row: Any) -> dict[str, Any]:
+    """One connection, as both the list and the registration return it.
+
+    One function so the two cannot drift: a field added to the list and
+    forgotten here would be a registration whose response does not describe
+    what it just created.
+    """
+    return {"connection_id": row.connection_id, "host_id": row.host_id,
+            "partner_id": row.partner_id, "user_id": row.user_id,
+            "host_url": row.host_url, "ebics_version": row.ebics_version,
+            "key_state": row.key_state.value, "initialised": row.initialised,
+            # What this connection will send, resolved rather than raw: a caller
+            # deciding whether to ask for `instant` needs the answer, not the
+            # subset somebody happened to override (`painfree.schemes`).
+            "payment_schemes": row.schemes.as_json(),
+            "created_at": row.created_at.isoformat()}
+
+
+@router.post("/connections", status_code=201, tags=["connections"],
+             summary="Register a bank connection")
+def register_connection(registration: ConnectionRegistration,
+                        request: Request,
+                        principal: Principal = Depends(
+                            requires(Scope.connections_write)),
+                        ) -> dict[str, Any]:
+    """Register a subscriber from its identifiers. **No keys are minted here.**
+
+    Until this route existed the console had the only one that could, which
+    made a deployment something rebuilt by retyping a bank's parameter sheet
+    into a browser rather than from a file somebody can review in a diff. The
+    identifiers are not secret, so there was no reason for that.
+
+    It demands `connections:write`, exactly as the console route does, and no
+    grant level carries that scope: deciding that this deployment *has* a
+    connection is an `admin` act, because registering the keys that will
+    authorise money movement against it follows from it.
+
+    Registering the same id twice is a `409`, not a second connection. What
+    happens next is the key lifecycle, which is the worker's.
+    """
+    product = None
+    if registration.product is not None:
+        product = ebics3.Product(name=registration.product.name,
+                                 language=registration.product.language,
+                                 institute=registration.product.institute)
+    with bind(connection_id=registration.connection_id):
+        row = request.app.state.connections.register(
+            registration.connection_id,
+            host_id=registration.host_id,
+            partner_id=registration.partner_id,
+            user_id=registration.user_id,
+            host_url=registration.host_url,
+            letter_digest=(registration.letter_digest
+                           or ebics3.LetterDigest.PUBLIC_KEY.value),
+            product=product,
+            actor=principal.actor())
+    return _connection_body(row)
 
 
 #: How many audit events one page returns, and the cap on what may be asked for.

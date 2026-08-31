@@ -332,6 +332,8 @@
   "keys.common_name_hint": "Por defecto, el UserID.",
   "keys.confirmed": "Confirmado. Las huellas aceptadas son:",
   "keys.country": "País",
+  "keys.custody_body": "Las mitades privadas se sellan con PAINFREE_KEY_ENCRYPTION_SECRET, un valor que reside en un único fichero del host, deploy/secrets/custody_secret, y que ninguna copia de seguridad de la base de datos contiene. Si se pierde, nadie podrá volver a leer estas claves: esta conexión necesita claves nuevas, una nueva carta INI firmada en papel y enviada al banco, y días antes de poder volver a ordenar pagos.",
+  "keys.custody_title": "Haga una copia del secreto de custodia antes de generar",
   "keys.every_key": "todas las claves de este suscriptor",
   "keys.fetch_hpb": "Recoger HPB",
   "keys.fetch_hpb_again": "Recoger HPB de nuevo",

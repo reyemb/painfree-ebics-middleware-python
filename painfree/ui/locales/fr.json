@@ -332,6 +332,8 @@
   "keys.common_name_hint": "Par défaut, l'UserID.",
   "keys.confirmed": "Confirmé. Les empreintes acceptées sont :",
   "keys.country": "Pays",
+  "keys.custody_body": "Les moitiés privées sont scellées avec PAINFREE_KEY_ENCRYPTION_SECRET, une valeur qui se trouve dans un seul fichier sur l'hôte, deploy/secrets/custody_secret, et qu'aucune sauvegarde de la base de données ne contient. En cas de perte, plus personne ne peut lire ces clés : cette connexion exige de nouvelles clés, une nouvelle lettre INI signée sur papier et envoyée à la banque, et des jours avant de pouvoir à nouveau payer.",
+  "keys.custody_title": "Sauvegardez le secret de garde avant de générer",
   "keys.every_key": "toutes les clés de cet abonné",
   "keys.fetch_hpb": "Récupérer HPB",
   "keys.fetch_hpb_again": "Récupérer HPB à nouveau",

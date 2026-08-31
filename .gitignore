@@ -22,6 +22,16 @@ __pycache__/
 # Committing it invites someone to treat a stale artefact as a release.
 dist/
 
+# The deployment's persistent state: the database, the TLS certificates and the
+# local CA's own key. compose bind-mounts these so that `down -v` cannot delete
+# them; that makes them real directories here, and none of it belongs in a
+# repository. `state/db` is not even readable by the user running the stack.
+state/
+
+# The four secret files deploy/init-secrets.sh generates, one of which is the
+# only copy of the key every stored EBICS private key is sealed under.
+deploy/secrets/
+
 # Scratch databases from local runs and browser checks. They carry no schema
 # the migrations do not, and a committed database invites someone to use it as
 # though it meant something.

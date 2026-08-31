@@ -48,6 +48,14 @@
   {% if subscriber_keys %}
     {{ parts.key_table(subscriber_keys) }}
   {% elif may('connections:write') and available.create_keys and not outstanding %}
+    {# The only irreversible action in this console whose cost is somebody
+       else's calendar. It is said here, next to the button, because the one
+       other place it was ever said is a line of stderr from a provisioning
+       script the operator may never have run. #}
+    <div class="card warn">
+      <strong>{{ t('keys.custody_title') }}</strong>
+      <p>{{ t('keys.custody_body') }}</p>
+    </div>
     <form class="stack" method="post" action="/ui/connections/{{ connection.connection_id }}/keys/create_keys">
       <label>{{ t('keys.common_name') }}<span class="hint">{{ t('keys.common_name_hint') }}</span>
         <input type="text" name="common_name" placeholder="{{ connection.user_id }}"></label>

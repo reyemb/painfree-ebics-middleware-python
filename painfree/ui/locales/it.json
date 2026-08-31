@@ -332,6 +332,8 @@
   "keys.common_name_hint": "Per impostazione predefinita lo UserID.",
   "keys.confirmed": "Confermato. Le impronte accettate sono:",
   "keys.country": "Paese",
+  "keys.custody_body": "Le metà private sono sigillate con PAINFREE_KEY_ENCRYPTION_SECRET, un valore che si trova in un unico file sull'host, deploy/secrets/custody_secret, e che nessun backup del database contiene. Se va perso, nessuno può più leggere queste chiavi: questa connessione richiede nuove chiavi, una nuova lettera INI firmata su carta e spedita alla banca, e giorni prima di poter tornare a disporre pagamenti.",
+  "keys.custody_title": "Esegui una copia del segreto di custodia prima di generare",
   "keys.every_key": "ogni chiave di questo abbonato",
   "keys.fetch_hpb": "Recupera HPB",
   "keys.fetch_hpb_again": "Recupera di nuovo HPB",

@@ -10,6 +10,15 @@
 {
 	# The admin API listens on all interfaces by default. Nothing here uses it.
 	admin off
+	# Where this proxy listens *inside* the container. A rootless engine may not
+	# publish a port below 1024, so the default is a pair above it and compose
+	# publishes the same numbers. Setting them here rather than writing a port
+	# into PAINFREE_SITE_ADDRESS is what keeps the site address a plain URL:
+	# Caddy uses these for a site that names no port, for the HTTP redirect and
+	# for the ACME challenge, so a deployment moves to 80/443 by changing .env
+	# and nothing else.
+	http_port {$PAINFREE_HTTP_PORT:8080}
+	https_port {$PAINFREE_HTTPS_PORT:8443}
 	# One JSON object per line, to stdout, for the same reason the application
 	# does it: one stream, one shape, `podman logs` is enough.
 	log {
@@ -20,6 +29,23 @@
 
 {$PAINFREE_SITE_ADDRESS} {
 	encode zstd gzip
+
+	# The local CA's public root, at a fixed path and behind no authentication.
+	#
+	# When the site address is a `.localhost` name, Caddy issues from its own CA
+	# and every browser shows a full-page warning until that root is imported.
+	# The console cannot offer the file, because the console is behind the
+	# certificate the warning is about: a page you must click through the warning
+	# to reach cannot be where you go to stop clicking through it. So the proxy
+	# serves it, and the README says to visit it.
+	#
+	# Serving a CA's *public* root discloses nothing. It is the half a CA exists
+	# to hand out; the private key beside it never leaves /data.
+	handle /local-ca.crt {
+		root * /data/caddy/pki/authorities/local
+		rewrite * /root.crt
+		file_server
+	}
 
 	# Forwarded so the application sees the scheme and host the browser used
 	# rather than the ones the proxy dialled. The OIDC redirect URI is

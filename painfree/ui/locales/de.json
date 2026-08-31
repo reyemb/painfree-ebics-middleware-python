@@ -332,6 +332,8 @@
   "keys.common_name_hint": "Standardmässig die UserID.",
   "keys.confirmed": "Bestätigt. Die angenommenen Fingerabdrücke sind:",
   "keys.country": "Land",
+  "keys.custody_body": "Die privaten Hälften werden mit PAINFREE_KEY_ENCRYPTION_SECRET versiegelt. Dieser Wert liegt in einer einzigen Datei auf dem Host, deploy/secrets/custody_secret, und ist in keiner Datenbanksicherung enthalten. Geht er verloren, kann niemand diese Schlüssel mehr lesen: Diese Verbindung braucht neue Schlüssel, einen neuen, auf Papier unterschriebenen INI-Brief an die Bank und Tage, bis sie wieder Zahlungen ausführen kann.",
+  "keys.custody_title": "Sichern Sie das Verwahrungsgeheimnis, bevor Sie erzeugen",
   "keys.every_key": "jeden Schlüssel dieses Teilnehmers",
   "keys.fetch_hpb": "HPB abholen",
   "keys.fetch_hpb_again": "HPB erneut abholen",

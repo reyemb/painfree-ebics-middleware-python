@@ -35,15 +35,48 @@ docker compose up -d                     # db, api, worker, TLS proxy
 docker compose exec api python -m painfree create-admin you    # no OIDC only
 ```
 
-Open the address in `.env`. Set
-`PAINFREE_SITE_ADDRESS=https://painfree.localhost` to run it on a machine with
-no DNS: the proxy issues that certificate from its own local CA.
-`podman-compose` works identically, and `deploy/build-image.sh` builds the
-image yourself if you would rather not run someone else's.
+It comes up on `https://painfree.localhost:8443`, on loopback: a rootless
+engine may not publish a port below 1024, so the defaults are above it. A
+deployment on a real hostname sets `PAINFREE_HTTP_PORT`, `PAINFREE_HTTPS_PORT`
+and the two `_BIND` variables to 80 and 443, which is what ACME needs anyway.
+
+Two things that machine needs, both once:
+
+```bash
+echo "127.0.0.1  painfree.localhost" | sudo tee -a /etc/hosts
+curl -k https://painfree.localhost:8443/local-ca.crt -o painfree-local-ca.crt
+```
+
+glibc resolves `localhost` and nothing else under it, so `.localhost` names do
+not resolve on Debian, Ubuntu or WSL even though the stack is healthy and the
+certificate is valid. The second line fetches the local CA's public root, which
+the proxy serves unauthenticated; import it and the browser warning goes away.
+Neither is needed once `PAINFREE_SITE_ADDRESS` is a real hostname with a real
+certificate.
+
+`podman-compose` works identically, and `deploy/build-image.sh` builds the image
+yourself if you would rather not run someone else's.
 
 Everything that is not secret lives in `.env`. Every secret is a file under
 `deploy/secrets/`, generated once, mounted at runtime, and never baked into the
-image or committed.
+image or committed. Everything that survives a restart is a directory under
+`state/`, so the deployment is this folder and no compose command can delete
+any of it.
+
+## Backups
+
+```bash
+deploy/snapshot.sh          # one .tar.gz that restores on another machine
+```
+
+`state/db` is owned by a uid inside the container's user namespace, so `tar` and
+`cp -r` run as you will skip it, keep going, and write an archive that holds the
+custody secret and the certificates but not the database. `snapshot.sh` takes
+the database as a `pg_dump` from inside the container that can read it, and
+refuses to write anything if that dump comes back empty.
+
+The archive contains the custody secret **and** the data it opens. Encrypt it
+before it goes anywhere you do not control.
 
 ## Submitting a payment
 
