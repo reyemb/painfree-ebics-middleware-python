@@ -404,12 +404,20 @@ application is built without the ability to do it at all.
 
 ## Deployment
 
+Four lines, against the published image. Nothing is built.
+
 ```bash
-deploy/build-image.sh                       # prints the PAINFREE_IMAGE line
-cp deploy/production.env.example .env       # image, site address, OIDC
-PAINFREE_IMAGE=… deploy/init-secrets.sh     # four secret files, generated once
-podman-compose up -d                        # db, api, worker, TLS proxy
+cp deploy/production.env.example .env    # pinned to the published image
+deploy/init-secrets.sh                   # four secret files, generated once
+docker compose up -d                     # db, api, worker, TLS proxy
+docker compose exec api python -m painfree create-admin you    # no OIDC only
 ```
+
+Then open the address in `.env`. Set `PAINFREE_SITE_ADDRESS` to
+`https://painfree.localhost` to run it on a machine with no DNS: the proxy
+issues that certificate from its own local CA. `podman-compose` works
+identically, and `deploy/build-image.sh` builds the image yourself if you would
+rather not run someone else's.
 
 One image, two roles: `api` serves HTTP and is refused the custody secret,
 `worker` holds it. The image is pinned to its base by digest, installs every
@@ -443,11 +451,12 @@ asserted from its own code: the webhook envelope in
 ## Licence
 
 **MIT.** Copyright (c) 2026 reyemb. The full text is in
-[LICENSE](LICENSE).
+[LICENSE](https://github.com/reyemb/painfree-ebics-middleware-python/blob/main/LICENSE).
 
 The EBICS 3.0 engine in `painfree/ebics3/` is a Python port of
 [`ebics-api/ebics-client-php`](https://github.com/ebics-api/ebics-client-php),
-which is MIT too. Its notice is reproduced in full in [NOTICE](NOTICE), which
-is where the provenance of this distribution is recorded and which every copy
-has to keep, because MIT obliges it, and both files ship inside the wheel, the
-source distribution and the container image.
+which is MIT too. Its notice is reproduced in full in
+[NOTICE](https://github.com/reyemb/painfree-ebics-middleware-python/blob/main/NOTICE),
+which is where the provenance of this distribution is recorded and which every
+copy has to keep, because MIT obliges it, and both files ship inside the wheel,
+the source distribution and the container image.

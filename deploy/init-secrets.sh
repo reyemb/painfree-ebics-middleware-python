@@ -26,7 +26,8 @@ if [ -z "${PAINFREE_IMAGE:-}" ] && [ -f "$root/.env" ]; then
     PAINFREE_IMAGE=$(sed -n 's/^PAINFREE_IMAGE=//p' "$root/.env" | head -1)
 fi
 if [ -z "${PAINFREE_IMAGE:-}" ]; then
-    echo "PAINFREE_IMAGE is not set: build the image first (deploy/build-image.sh)" >&2
+    echo "PAINFREE_IMAGE is not set: copy deploy/production.env.example to .env," >&2
+    echo "or build the image yourself with deploy/build-image.sh." >&2
     exit 1
 fi
 
