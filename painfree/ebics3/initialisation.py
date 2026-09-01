@@ -113,10 +113,28 @@ class KeyState(str, Enum):
 
 
 class LetterDigest(str, Enum):
-    """Which of the two fingerprints over a key a letter is quoting."""
+    """Which of the two fingerprints over a key a letter is quoting.
+
+    Both exist for the same key and they are different 64-character strings, so
+    a match under the wrong one is not a match. `ebics-client-php` picks between
+    them by protocol version: ``DigestResolverV2`` prints the public-key digest
+    unless a certificate is present, and ``DigestResolverV3`` -- the EBICS 3.0
+    rule -- always prints the certificate's.
+
+    **This engine speaks H005 only**, so :data:`DEFAULT` is the certificate. It
+    was the public-key digest until a bank telephoned about an INI letter whose
+    hashes did not match the keys it had just been sent: the keys were right,
+    the letter quoted the H004 fingerprint, and every connection this engine can
+    register is H005. A default that is wrong for every connection it can create
+    is not a default, it is a trap.
+    """
 
     PUBLIC_KEY = "public_key"
     CERTIFICATE = "certificate"
+
+
+#: What a letter quotes unless a connection says otherwise. See above: H005.
+DEFAULT_LETTER_DIGEST = LetterDigest.CERTIFICATE
 
 
 # --- the bank's keys -------------------------------------------------------
@@ -134,7 +152,7 @@ class BankKeys:
     encryption: EbicsKey
     host_id: str | None = None
 
-    def fingerprints(self, digest: LetterDigest = LetterDigest.PUBLIC_KEY
+    def fingerprints(self, digest: LetterDigest = DEFAULT_LETTER_DIGEST
                      ) -> dict[str, str]:
         """The two values to read off the bank's letter, keyed by version."""
         return {self.authentication.version.value: ini_letter_hash(
@@ -223,7 +241,7 @@ def _rsa_key_value(info: etree._Element, role: str) -> rsa.RSAPublicKey:
 # --- the fingerprint, and the comparison that matters ----------------------
 
 def ini_letter_hash(key: EbicsKey,
-                    digest: LetterDigest = LetterDigest.PUBLIC_KEY) -> str:
+                    digest: LetterDigest = DEFAULT_LETTER_DIGEST) -> str:
     """The fingerprint a letter carries for one key, lower-case hex."""
     if LetterDigest(digest) is LetterDigest.CERTIFICATE:
         if key.certificate is None:
@@ -252,7 +270,7 @@ def verify_bank_keys(
     *,
     authentication: str,
     encryption: str,
-    digest: LetterDigest = LetterDigest.PUBLIC_KEY,
+    digest: LetterDigest = DEFAULT_LETTER_DIGEST,
 ) -> dict[str, str]:
     """Compare the bank's keys against the fingerprints on the bank's letter.
 
@@ -335,7 +353,7 @@ def build_ini_letter(
     authentication_key: EbicsKey,
     encryption_key: EbicsKey,
     *,
-    digest: LetterDigest = LetterDigest.PUBLIC_KEY,
+    digest: LetterDigest = DEFAULT_LETTER_DIGEST,
 ) -> IniLetter:
     """The three keys of a subscriber, formatted for the printed letter."""
     digest = LetterDigest(digest)
@@ -435,7 +453,7 @@ class Initialisation:
             return Step.HPB
         return None
 
-    def letter(self, digest: LetterDigest = LetterDigest.PUBLIC_KEY) -> IniLetter:
+    def letter(self, digest: LetterDigest = DEFAULT_LETTER_DIGEST) -> IniLetter:
         """The letter for *our* keys -- what the bank checks INI and HIA against."""
         return build_ini_letter(self.context, self.signature_key,
                                 self.authentication_key, self.encryption_key,
@@ -501,7 +519,7 @@ class Initialisation:
         return bank_keys
 
     def confirm_bank_keys(self, *, authentication: str, encryption: str,
-                          digest: LetterDigest = LetterDigest.PUBLIC_KEY
+                          digest: LetterDigest = DEFAULT_LETTER_DIGEST
                           ) -> dict[str, str]:
         """Check the bank's keys against its letter. Until this, nothing is trusted.
 

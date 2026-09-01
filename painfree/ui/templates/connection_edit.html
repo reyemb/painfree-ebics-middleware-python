@@ -42,6 +42,17 @@
       <option value="public_key" {{ 'selected' if connection.letter_digest.value == 'public_key' else '' }}>{{ t('connection_edit.digest_public_key') }}</option>
       <option value="certificate" {{ 'selected' if connection.letter_digest.value == 'certificate' else '' }}>{{ t('connection_edit.digest_certificate') }}</option>
     </select></label>
+  {# The letter is on paper, at a bank, and this decides what it says. Once
+     INI or HIA has gone out, changing it does not change a key the bank
+     holds -- it makes the letter somebody signed quote the wrong hash. #}
+  {% if connection.ini_sent or connection.hia_sent %}
+  <div class="card warn">
+    <strong>{{ t('connection_edit.digest_sent_title') }}</strong>
+    <p>{{ t('connection_edit.digest_sent_body') }}</p>
+    <label class="inline"><input type="checkbox" name="confirm_letter_digest" value="yes">
+      {{ t('connection_edit.digest_sent_confirm') }}</label>
+  </div>
+  {% endif %}
   <h3>{{ t('connection.product') }}</h3>
   <label>{{ t('connection_new.product_name') }}<input type="text" name="product_name" value="{{ connection.product.name if connection.product else '' }}"></label>
   <label>{{ t('connection_new.product_language') }}<input type="text" name="product_language" maxlength="2"

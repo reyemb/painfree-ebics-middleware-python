@@ -103,7 +103,7 @@ class ConnectionRegistry:
         user_id: str,
         host_url: str,
         product: ebics3.Product | None = None,
-        letter_digest: ebics3.LetterDigest | str = ebics3.LetterDigest.PUBLIC_KEY,
+        letter_digest: ebics3.LetterDigest | str = ebics3.DEFAULT_LETTER_DIGEST,
         ebics_version: str = DEFAULT_EBICS_VERSION,
         actor: Actor = SYSTEM_ACTOR,
     ) -> BankConnection:

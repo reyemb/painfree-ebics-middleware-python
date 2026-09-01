@@ -205,7 +205,11 @@ def test_the_public_keyring_still_serves_a_request(custody_settings, prepared):
     with TestClient(app, headers=dev_credentials()) as client:
         body = client.get("/_fingerprints").json()
     assert body["fingerprints"]["subscriber/X002"] == keys["X002"].fingerprint_hex
-    assert body["letter"] == keys["A006"].fingerprint_hex
+    # The letter quotes whichever fingerprint the connection names, and H005
+    # names the certificate's. `fingerprints()` is the public-key digest either
+    # way: it is the keyring's own index, not a letter.
+    assert body["letter"] == ebics3.ini_letter_hash(
+        keys["A006"], ConnectionRegistry(engine).get(CONNECTION).letter_digest)
 
 
 def test_the_keyring_has_no_method_that_returns_private_material():

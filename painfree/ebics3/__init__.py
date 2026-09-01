@@ -52,7 +52,8 @@ from .errors import (BankKeyMismatchError, BankRefusedError, CertificateError,
                      DocumentError, Ebics3Error, KeyMaterialError,
                      RequestError, TransactionError, UnsupportedVersionError)
 from .initialisation import (BankKeys, IniLetter, Initialisation, KeyState,
-                             LetterDigest, LetterKey, Step, build_ini_letter,
+                             DEFAULT_LETTER_DIGEST, LetterDigest, LetterKey,
+                             Step, build_ini_letter,
                              format_bytes, format_fingerprint, ini_letter_hash,
                              parse_hpb_order_data, verify_bank_keys)
 from .keys import EbicsKey
@@ -126,6 +127,7 @@ __all__ = [
     "KeyRole",
     "KeyState",
     "KeyVersion",
+    "DEFAULT_LETTER_DIGEST",
     "LetterDigest",
     "LetterKey",
     "Phase",

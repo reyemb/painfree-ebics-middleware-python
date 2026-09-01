@@ -308,7 +308,7 @@ def register_connection(registration: ConnectionRegistration,
             user_id=registration.user_id,
             host_url=registration.host_url,
             letter_digest=(registration.letter_digest
-                           or ebics3.LetterDigest.PUBLIC_KEY.value),
+                           or ebics3.DEFAULT_LETTER_DIGEST.value),
             product=product,
             actor=principal.actor())
     return _connection_body(row)

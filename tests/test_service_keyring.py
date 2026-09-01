@@ -143,7 +143,11 @@ def test_the_engine_can_drive_a_resumed_initialisation_with_reopened_keys(
     assert initialisation.state is ebics3.KeyState.CREATED
     assert initialisation.next_step is ebics3.Step.INI
     assert initialisation.next_request() is not None
-    assert initialisation.letter().signature.fingerprint == \
+    # `letter()` defaults to the engine's default convention, which is the
+    # certificate's; `fingerprint_hex` is the public-key digest. Named on both
+    # sides so this compares one thing rather than two.
+    assert initialisation.letter(ebics3.LetterDigest.PUBLIC_KEY
+                                 ).signature.fingerprint == \
         keys["A006"].fingerprint_hex
 
 

@@ -16,8 +16,13 @@
   <tr><td>HostID</td><td><code>{{ letter.host_id }}</code></td></tr>
   <tr><td>PartnerID</td><td><code>{{ letter.partner_id }}</code></td></tr>
   <tr><td>UserID</td><td><code>{{ letter.user_id }}</code></td></tr>
-  <tr><td>{{ t('letter.date') }}</td><td>{{ connection.updated_at | moment }}</td></tr>
-  <tr><td>{{ t('letter.hash_convention') }}</td><td>{{ letter.digest.value }}</td></tr>
+  <tr><td>{{ t('letter.date') }}</td><td>{{ keys_created_at | moment }}</td></tr>
+  {# Named in words, not as `public_key`. The bank clerk comparing this
+     against what INI and HIA delivered has to know which of the two
+     hashes over a key this is, and a letter that does not say costs a
+     phone call -- which is how this line came to be written. #}
+  <tr><td>{{ t('letter.hash_convention') }}</td>
+      <td>{{ t('letter.convention_' ~ letter.digest.value) }}</td></tr>
 </table>
 
 {% for key in letter.keys %}

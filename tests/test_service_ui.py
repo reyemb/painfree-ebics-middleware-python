@@ -20,13 +20,14 @@ from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from painfree import ebics3
 from painfree.app import create_app
 from painfree.keyjobs import JobState, KeyAction
 from painfree.orders import OrderState, OrderStore
-from painfree.schema import audit_log, key_material, payment_order
+from painfree.schema import (audit_log, bank_connection, key_material,
+                             payment_order)
 from painfree.statements import StatementStore
 from tests.conftest import (BANK_CONNECTION_ID, dev_credentials, fixture_bytes,
                             grant, payment_body)
@@ -110,10 +111,15 @@ def test_the_letter_carries_the_fingerprints_of_the_stored_keys(console):
     page = client.get(f"/ui/connections/{BANK_CONNECTION_ID}/letter",
                       headers=_admin())
     keyring = client.app.state.keyring
+    digest = client.app.state.connections.get(BANK_CONNECTION_ID).letter_digest
     for version in (ebics3.KeyVersion.A006, ebics3.KeyVersion.X002,
                     ebics3.KeyVersion.E002):
-        entry = keyring.entry(BANK_CONNECTION_ID, version)
-        assert ebics3.format_fingerprint(entry.fingerprint) in page.text, version
+        # Whichever of the two fingerprints this connection quotes. Read
+        # through the connection: `entry.fingerprint` is the keyring's index,
+        # which is the public-key digest whatever the letter says.
+        expected = ebics3.ini_letter_hash(
+            keyring.public_key(BANK_CONNECTION_ID, version), digest)
+        assert ebics3.format_fingerprint(expected) in page.text, version
         assert version.value in page.text
 
 
@@ -455,7 +461,10 @@ def test_changing_the_host_url_is_audited_with_both_values(console):
     response = client.post(
         f"/ui/connections/{BANK_CONNECTION_ID}/edit",
         data={"host_url": "https://new.example.test/ebics",
-              "letter_digest": "public_key"},
+              # The value the connection already has: this test is
+              # about the host URL, and posting a stale convention
+              # would trip the confirmation gate instead.
+              "letter_digest": "certificate"},
         headers=_admin(), follow_redirects=False)
     assert response.status_code == 303
 
@@ -474,3 +483,91 @@ def test_the_console_refuses_a_body_that_is_not_a_form(console):
                           json={"host_url": "https://x.test"}, headers=_admin())
     assert refused.status_code == 409
     assert "form submissions only" in refused.text
+
+
+# --- the letter is paper, and it is already at the bank ----------------------
+#
+# A production incident: the connection was registered with the default hash
+# convention, the letter was printed, signed and posted, INI and HIA went out,
+# and the convention was changed the next morning. Nothing was wrong with the
+# keys -- the bank was comparing the letter against a hash the letter did not
+# quote. The change was one select and a save, and it said nothing.
+
+def test_changing_the_hash_convention_after_ini_is_refused_unconfirmed(console):
+    """Not blocked -- a bank saying "wrong convention" is exactly when it is
+    needed -- but not silent either. The refusal says what it costs."""
+    client, engine, *_ = console
+    with engine.begin() as connection:
+        connection.execute(
+            update(bank_connection)
+            .where(bank_connection.c.connection_id == BANK_CONNECTION_ID)
+            .values(ini_sent=True))
+
+    response = client.post(f"/ui/connections/{BANK_CONNECTION_ID}/edit", data={
+        "host_url": "https://ebics.example.test/", "letter_digest": "public_key"},
+        headers=_admin())
+
+    assert response.status_code == 409
+    body = response.text
+    assert "reprinted" in body or "reprint" in body
+    # And it did not change.
+    with engine.connect() as connection:
+        digest = connection.execute(
+            select(bank_connection.c.letter_digest)
+            .where(bank_connection.c.connection_id == BANK_CONNECTION_ID)).scalar_one()
+    assert digest == "certificate"
+
+
+def test_confirming_it_goes_through(console):
+    """The operator who has read the sentence can still do the thing."""
+    client, engine, *_ = console
+    with engine.begin() as connection:
+        connection.execute(
+            update(bank_connection)
+            .where(bank_connection.c.connection_id == BANK_CONNECTION_ID)
+            .values(ini_sent=True))
+
+    response = client.post(f"/ui/connections/{BANK_CONNECTION_ID}/edit", data={
+        "host_url": "https://ebics.example.test/", "letter_digest": "public_key",
+        "confirm_letter_digest": "yes"}, headers=_admin(),
+        follow_redirects=False)
+
+    assert response.status_code in (302, 303), response.text
+    with engine.connect() as connection:
+        digest = connection.execute(
+            select(bank_connection.c.letter_digest)
+            .where(bank_connection.c.connection_id == BANK_CONNECTION_ID)).scalar_one()
+    assert digest == "public_key"
+
+
+def test_nothing_is_confirmed_before_a_letter_can_have_been_sent(console):
+    """Before INI, the letter is not at a bank and this is an ordinary edit.
+
+    The fixture arrives initialised, so the flags are cleared here: what is
+    under test is the state a connection is in on the day it is registered.
+    """
+    client, engine, *_ = console
+    with engine.begin() as connection:
+        connection.execute(
+            update(bank_connection)
+            .where(bank_connection.c.connection_id == BANK_CONNECTION_ID)
+            .values(ini_sent=False, hia_sent=False))
+
+    response = client.post(f"/ui/connections/{BANK_CONNECTION_ID}/edit", data={
+        "host_url": "https://ebics.example.test/", "letter_digest": "public_key"},
+        headers=_admin(), follow_redirects=False)
+
+    assert response.status_code in (302, 303), response.text
+
+
+def test_the_letter_says_which_hash_it_quotes(console):
+    """In words. `public_key` on a document a bank clerk reads is not an answer."""
+    client, *_ = console
+
+    page = client.get(f"/ui/connections/{BANK_CONNECTION_ID}/letter",
+                      headers=_admin())
+
+    assert page.status_code == 200
+    # H005 quotes the certificate's, and the letter says so in words.
+    assert "X.509 certificate" in page.text
+    assert "certificate" in page.text and "public_key" not in page.text

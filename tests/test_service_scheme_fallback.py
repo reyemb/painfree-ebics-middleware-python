@@ -775,7 +775,9 @@ def test_the_console_edits_the_scheme_configuration(prepared_bank,
             f"/ui/connections/{BANK_CONNECTION_ID}/edit",
             headers=headers, follow_redirects=False,
             data={"host_url": "https://ebics.example.test/",
-                  "letter_digest": "public_key",
+                  # What the connection already has; this test is
+                  # about the schemes.
+                  "letter_digest": "certificate",
                   "scheme_default": "instant_or_normal",
                   "instant_refusal_codes": "091112 091116",
                   "normal_service_name": "MCT", "normal_scope": "CH",

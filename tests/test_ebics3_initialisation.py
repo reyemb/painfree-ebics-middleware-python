@@ -115,8 +115,19 @@ def initialisation() -> ebics3.Initialisation:
 
 
 def bank_fingerprints() -> dict[str, str]:
+    """The bank's fingerprints as this file's fixtures quote them.
+
+    The **public-key** digest, which is no longer the default: H005 letters
+    quote the certificate's, so every call below names the convention rather
+    than inheriting one. Both values exist for one key and they never match,
+    which is the whole reason the parameter exists.
+    """
     return {"authentication": BANK["X002"].fingerprint_hex,
             "encryption": BANK["E002"].fingerprint_hex}
+
+
+#: What the fixtures above are digests of.
+FIXTURE_DIGEST = ebics3.LetterDigest.PUBLIC_KEY
 
 
 # --- reading the bank's keys -----------------------------------------------
@@ -162,6 +173,9 @@ def test_matching_fingerprints_are_accepted_however_they_were_typed():
         bank_keys,
         authentication=ebics3.format_fingerprint(expected["authentication"]).upper(),
         encryption=":".join(expected["encryption"][i:i + 2] for i in range(0, 64, 2)),
+        # Named, because the default is the certificate one: these fixtures
+        # quote the public-key digest.
+        digest=ebics3.LetterDigest.PUBLIC_KEY,
     )
     assert accepted == expected
 
@@ -176,7 +190,8 @@ def test_a_substituted_encryption_key_is_refused():
     substituted = hpb_order_data({"X002": BANK["X002"], "E002": IMPOSTOR["E002"]})
     bank_keys = ebics3.parse_hpb_order_data(substituted)
     with pytest.raises(ebics3.BankKeyMismatchError) as raised:
-        ebics3.verify_bank_keys(bank_keys, **bank_fingerprints())
+        ebics3.verify_bank_keys(bank_keys, **bank_fingerprints(),
+                                digest=FIXTURE_DIGEST)
 
     assert raised.value.role == "encryption"
     assert raised.value.actual == IMPOSTOR["E002"].fingerprint_hex
@@ -231,8 +246,11 @@ def test_a_key_without_a_certificate_cannot_produce_a_certificate_digest():
 # --- the letter ------------------------------------------------------------
 
 def test_the_letter_carries_the_fingerprint_machinery_s_own_values():
+    # The convention is named rather than defaulted: this asserts the
+    # public-key digest, and the default is the certificate one.
     letter = ebics3.build_ini_letter(CONTEXT, KEYS["A006"], KEYS["X002"],
-                                     KEYS["E002"])
+                                     KEYS["E002"],
+                                     digest=ebics3.LetterDigest.PUBLIC_KEY)
     assert letter.signature.fingerprint == ebics3.public_key_digest_hex(
         KEYS["A006"].public_key)
     assert letter.authentication.version is ebics3.KeyVersion.X002
@@ -278,7 +296,7 @@ def test_the_state_reaches_ready_only_after_the_letter_is_checked():
 
     assert flow.state is ebics3.KeyState.BANK_KEYS_RECEIVED
     assert flow.next_request() is None  # nothing left to ask the bank
-    flow.confirm_bank_keys(**bank_fingerprints())
+    flow.confirm_bank_keys(**bank_fingerprints(), digest=FIXTURE_DIGEST)
     assert flow.state is ebics3.KeyState.READY
 
 
@@ -289,7 +307,7 @@ def test_a_refused_confirmation_leaves_the_flow_where_it_was():
         payload=hpb_order_data({"X002": BANK["X002"], "E002": IMPOSTOR["E002"]})))
 
     with pytest.raises(ebics3.BankKeyMismatchError):
-        flow.confirm_bank_keys(**bank_fingerprints())
+        flow.confirm_bank_keys(**bank_fingerprints(), digest=FIXTURE_DIGEST)
     assert flow.state is ebics3.KeyState.BANK_KEYS_RECEIVED
     assert flow.bank_fingerprints is None
     # The keys that arrived are kept: they are the evidence of what happened.
@@ -298,7 +316,8 @@ def test_a_refused_confirmation_leaves_the_flow_where_it_was():
 
 def test_confirming_before_hpb_is_an_error_not_a_pass():
     with pytest.raises(ebics3.DocumentError, match="not been fetched"):
-        initialisation().confirm_bank_keys(**bank_fingerprints())
+        initialisation().confirm_bank_keys(**bank_fingerprints(),
+                                           digest=FIXTURE_DIGEST)
 
 
 def test_a_refused_registration_raises_rather_than_advancing():
@@ -331,3 +350,32 @@ def test_feeding_a_finished_initialisation_is_an_error():
     flow.feed(key_management_response(payload=hpb_order_data()))
     with pytest.raises(ebics3.DocumentError, match="nothing outstanding"):
         flow.feed(key_management_response())
+
+
+# --- which of the two fingerprints a letter quotes ---------------------------
+
+def test_the_default_letter_digest_is_the_certificate():
+    """Because this engine speaks H005 and nothing else.
+
+    Both fingerprints exist for one key and they are different strings, so a
+    match under the wrong one is not a match. `ebics-client-php` chooses by
+    version: `DigestResolverV2` prints the public-key digest, `DigestResolverV3`
+    -- the EBICS 3.0 rule -- always prints the certificate's. Every connection
+    this engine can register is H005, so the public-key digest was a default
+    that was wrong for every connection it could create.
+
+    A bank telephoned about it: the keys were right, the letter was not.
+    """
+    assert ebics3.EBICS_VERSION == "H005"
+    assert ebics3.DEFAULT_LETTER_DIGEST is ebics3.LetterDigest.CERTIFICATE
+
+
+def test_the_two_fingerprints_are_different_strings():
+    """The reason picking the wrong one is not a near miss."""
+    key = KEYS["X002"]
+
+    public = ebics3.ini_letter_hash(key, ebics3.LetterDigest.PUBLIC_KEY)
+    certificate = ebics3.ini_letter_hash(key, ebics3.LetterDigest.CERTIFICATE)
+
+    assert len(public) == len(certificate) == 64
+    assert public != certificate

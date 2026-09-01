@@ -80,7 +80,8 @@ PLACEHOLDER = re.compile(r"\{([a-z_]+)\}")
 #: members are checked against the model instead, below.
 DYNAMIC_PREFIXES = ("state.", "key_state.", "status_code.", "bank_keys.role_",
                     "schedule_new.", "alerts.", "audit.target.", "cadence.",
-                    "unit.", "scheme.", "scheme_state.", "scheme_reason.")
+                    "unit.", "scheme.", "scheme_state.", "scheme_reason.",
+                    "letter.convention_")
 
 LOCALES = pathlib.Path(rendering.TEMPLATES).parent / "locales"
 
@@ -401,6 +402,13 @@ def test_the_keys_built_by_concatenation_cover_the_model():
         assert f"status_code.{code}" in english, code
     for role in ("authentication", "encryption"):
         assert f"bank_keys.role_{role}" in english
+    # Which of the two hashes over a key the letter quotes. A convention added
+    # without a sentence for it would print `letter.convention_whatever` on a
+    # document that goes to a bank -- and the reason this is spelled out at all
+    # is that the raw value used to be what it printed.
+    from painfree.ebics3 import LetterDigest
+    for digest in LetterDigest:
+        assert f"letter.convention_{digest.value}" in english, digest
     for unit in ("minutes", "hours", "days"):
         assert f"schedule_new.{unit}" in english
     # The payment schemes, the attempt states and every reason the scheme

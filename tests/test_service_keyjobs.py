@@ -167,8 +167,21 @@ def test_the_worker_walks_ini_hia_and_hpb_and_stages_what_it_got(lifecycle):
         keyring.bank_keys(CONNECTION)
 
     received = keyring.staged_fingerprints(registry.get(CONNECTION))
-    assert received == {"authentication": bank.authentication.fingerprint_hex,
-                        "encryption": bank.encryption.fingerprint_hex}
+    assert received == {
+        "authentication": _letter_value(bank.authentication, registry),
+        "encryption": _letter_value(bank.encryption, registry)}
+
+
+
+def _letter_value(key, registry) -> str:
+    """The fingerprint this connection's letter quotes for one key.
+
+    Read through the connection rather than hard-coded, because which of the
+    two fingerprints that is belongs to the connection: H005 quotes the
+    certificate's, and a test that pinned one convention would fail the day the
+    default moved rather than the day the behaviour did.
+    """
+    return ebics3.ini_letter_hash(key, registry.get(CONNECTION).letter_digest)
 
 
 def test_confirming_with_the_letters_values_makes_the_connection_usable(lifecycle):
@@ -178,17 +191,17 @@ def test_confirming_with_the_letters_values_makes_the_connection_usable(lifecycl
     done = _run(store, worker, CONNECTION, KeyAction.confirm_bank_keys, registry,
                 # As a human reads them off paper: spaces, and upper case.
                 authentication=ebics3.format_fingerprint(
-                    bank.authentication.fingerprint_hex).upper(),
+                    _letter_value(bank.authentication, registry)).upper(),
                 encryption=ebics3.format_fingerprint(
-                    bank.encryption.fingerprint_hex))
+                    _letter_value(bank.encryption, registry)))
     assert done.state is JobState.DONE
 
     connection = registry.get(CONNECTION)
     assert connection.key_state is ebics3.KeyState.READY
     assert connection.initialised is True
     assert connection.bank_fingerprints == {
-        "authentication": bank.authentication.fingerprint_hex,
-        "encryption": bank.encryption.fingerprint_hex}
+        "authentication": _letter_value(bank.authentication, registry),
+        "encryption": _letter_value(bank.encryption, registry)}
 
     keyring = Keyring(engine)
     assert keyring.staged_bank_keys(CONNECTION) == []
@@ -202,7 +215,7 @@ def test_a_substituted_key_is_refused_and_the_connection_stays_unusable(lifecycl
     _walk_to_hpb(lifecycle)
 
     done = _run(store, worker, CONNECTION, KeyAction.confirm_bank_keys, registry,
-                authentication=bank.authentication.fingerprint_hex,
+                authentication=_letter_value(bank.authentication, registry),
                 encryption="00" * 32)
     assert done.state is JobState.FAILED
     assert "encryption" in (done.last_error or "")
@@ -254,8 +267,8 @@ def test_hpb_can_be_repeated_and_a_ready_connection_keeps_the_keys_it_trusts(
     engine, registry, store, worker, bank, _ = lifecycle
     _walk_to_hpb(lifecycle)
     _run(store, worker, CONNECTION, KeyAction.confirm_bank_keys, registry,
-         authentication=bank.authentication.fingerprint_hex,
-         encryption=bank.encryption.fingerprint_hex)
+         authentication=_letter_value(bank.authentication, registry),
+         encryption=_letter_value(bank.encryption, registry))
     assert registry.get(CONNECTION).initialised is True
 
     _run(store, worker, CONNECTION, KeyAction.fetch_hpb, registry)
@@ -321,8 +334,8 @@ def test_renewal_mints_a_generation_and_does_not_tell_the_bank(lifecycle):
     engine, registry, store, worker, bank, _ = lifecycle
     _walk_to_hpb(lifecycle)
     _run(store, worker, CONNECTION, KeyAction.confirm_bank_keys, registry,
-         authentication=bank.authentication.fingerprint_hex,
-         encryption=bank.encryption.fingerprint_hex)
+         authentication=_letter_value(bank.authentication, registry),
+         encryption=_letter_value(bank.encryption, registry))
 
     before = Keyring(engine).entry(CONNECTION, ebics3.KeyVersion.X002)
     done = _run(store, worker, CONNECTION, KeyAction.renew_key, registry,

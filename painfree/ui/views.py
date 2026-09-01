@@ -203,7 +203,7 @@ def register_connection(
             user_id=_required(form, "user_id", "the UserID"),
             host_url=_required(form, "host_url", "the host URL"),
             letter_digest=(form.get("letter_digest")
-                           or ebics3.LetterDigest.PUBLIC_KEY.value),
+                           or ebics3.DEFAULT_LETTER_DIGEST.value),
             product=product, actor=principal.actor())
     return _see(f"{PREFIX}/connections/{connection_id}/keys")
 
@@ -260,10 +260,27 @@ def save_connection(
             language=(form.get("product_language") or "de").strip() or "de",
             institute=(form.get("product_institute") or "").strip() or None)
     with bind(connection_id=connection_id):
+        current = _registry(request).get(connection_id)
+        wanted = form.get("letter_digest") or None
+        # Changing which hash the letter quotes, once a letter has been acted
+        # on, does not change a single key the bank holds -- and invalidates
+        # the paper somebody already signed and posted. It stays *possible*,
+        # because a bank that says "wrong convention" after INI is exactly when
+        # it has to be done. It stops being silent.
+        if (wanted and ebics3.LetterDigest(wanted) is not current.letter_digest
+                and (current.ini_sent or current.hia_sent)):
+            if (form.get("confirm_letter_digest") or "").strip() != "yes":
+                raise ConflictError(
+                    "INI or HIA has already been sent for this connection, so "
+                    "the letter that was printed quotes the other hash. "
+                    "Changing this does not change the keys the bank holds; it "
+                    "changes what a reprinted letter says, and the letter has "
+                    "to be reprinted, signed and posted again. Confirm to "
+                    "continue.")
         _registry(request).update(
             connection_id,
             host_url=_required(form, "host_url", "the host URL"),
-            letter_digest=form.get("letter_digest") or None,
+            letter_digest=wanted,
             schemes=schemes_from(form), product=product,
             actor=principal.actor())
     return _see(f"{PREFIX}/connections/{connection_id}?updated=1")
@@ -471,8 +488,18 @@ def letter(request: Request, connection_id: str,
     """
     with bind(connection_id=connection_id):
         row = _registry(request).get(connection_id)
+        keyring = _keyring(request)
+        # Dated by the keys it attests to, not by the connection row. The row
+        # is touched by an ordinary edit, so a letter already signed and posted
+        # would silently re-date itself -- which is exactly the kind of thing
+        # nobody notices until a bank asks why two copies disagree.
+        signed_for = max(
+            keyring.entry(connection_id, version).created_at
+            for version in (keyring.signature_version(connection_id),
+                            ebics3.KeyVersion.X002, ebics3.KeyVersion.E002))
         return render(request, "letter.html", connection=row,
-                      letter=_keyring(request).letter(row))
+                      keys_created_at=signed_for,
+                      letter=keyring.letter(row))
 
 
 # --- orders -----------------------------------------------------------------
