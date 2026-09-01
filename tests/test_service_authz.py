@@ -791,3 +791,123 @@ def test_the_names_are_parsed_forgivingly(settings):
         update={"oidc_admin_role": " admins , ,ops,"})
 
     assert configured.admin_role_names == {"admins", "ops"}
+
+
+# --- what the provider's roles claim is allowed to become --------------------
+#
+# A real directory is not built for one service. Everything below is about the
+# gap between what a provider sends and what this deployment is willing to keep,
+# and each was found on a live deployment against an organisation-wide realm
+# rather than reasoned about here.
+
+def test_a_token_carrying_no_roles_at_all_says_so(oidc_client, capsys):
+    """The most likely first-run outcome, and it had been the quietest one.
+
+    Keycloak's realm-roles mapper ships with "Add to ID token" off, and this
+    service reads the id_token for browser sessions. So a correctly assigned
+    administrator signs in, successfully, holding nothing -- and until this line
+    existed the only evidence was `"roles": []` inside an info-level line that
+    looked like every other successful login.
+    """
+    client, provider = oidc_client
+    capsys.readouterr()
+    # `claims()` drops a None, so this token carries no roles claim at all --
+    # which is the shape a mapper that was never enabled produces.
+    assert client.get("/auth/me",
+                      headers=bearer(provider.token(roles=None))).status_code == 200
+
+    line = next(json.loads(l) for l in capsys.readouterr().out.splitlines()
+                if l.strip() and json.loads(l)["event"] == "auth.no_roles_in_token")
+    assert line["level"] == "warning"
+    # The claim path is configuration, so it can be quoted back: an operator who
+    # reads this knows to look at the mapper rather than at their directory.
+    assert line["claim"] == "roles"
+    assert line["present"] is False
+    assert "Add to ID token" in line["reason"]
+
+
+def test_an_empty_roles_claim_is_reported_as_present_but_empty(oidc_client, capsys):
+    """A claim that arrived carrying nothing is a different fault from no claim.
+
+    One says the mapper is missing; the other says it ran and matched nobody.
+    Both leave the caller holding nothing, so both warn, and the field that
+    tells them apart is the one an operator needs.
+    """
+    client, provider = oidc_client
+    capsys.readouterr()
+    assert client.get("/auth/me",
+                      headers=bearer(provider.token(roles=[]))).status_code == 200
+
+    line = next(json.loads(l) for l in capsys.readouterr().out.splitlines()
+                if l.strip() and json.loads(l)["event"] == "auth.no_roles_in_token")
+    assert line["present"] is True
+
+
+def test_roles_this_deployment_does_not_map_are_counted_and_never_kept(
+        oidc_client, capsys):
+    """The finding: an org-wide realm sent 34 names, of which two meant anything.
+
+    Keeping the rest cost three things and bought none -- a warning that fired on
+    every login and so stopped being a diagnostic, a session row of hundreds of
+    bytes that decide nothing, and an audit trail accumulating a durable map of
+    who may do what across an entire organisation. This service needs one bit
+    from that claim: which of its own roles are present.
+    """
+    client, provider = oidc_client
+    others = ["ena-foerderung-manage", "wupp-payout", "ena-abacus-accounting",
+              "enalytics-admin", "offline_access", "uma_authorization"]
+    capsys.readouterr()
+    me = client.get("/auth/me",
+                    headers=bearer(provider.token(roles=["operator", *others])))
+    assert me.status_code == 200
+
+    body = me.json()
+    # The one it maps survives; the six that belong to somebody else's
+    # authorization model do not, anywhere.
+    assert body["roles"] == ["operator"]
+    assert body["unrecognised_role_count"] == len(others)
+    written = capsys.readouterr().out
+    for name in others:
+        assert name not in written, f"{name} reached the log"
+
+    line = next(json.loads(l) for l in written.splitlines()
+                if l.strip() and json.loads(l)["event"] == "auth.unmapped_roles")
+    # Info, not warning: a shared realm carrying other people's roles beside
+    # ours is the ordinary case, and a warning on every login is not a
+    # diagnostic. The count is what is worth reading.
+    assert line["level"] == "info"
+    assert line["unrecognised_role_count"] == len(others)
+    assert "roles" not in line
+
+
+def test_names_that_are_all_unrecognised_still_warn(oidc_client, capsys):
+    """This is the case that actually indicates a misconfigured role name, so
+    it is the one that keeps `warning`: the directory answered, and none of it
+    was ours. The caller is a member holding nothing and the console is empty,
+    which is the symptom this line exists to explain."""
+    client, provider = oidc_client
+    capsys.readouterr()
+    assert client.get(
+        "/auth/me",
+        headers=bearer(provider.token(roles=["painfree-admins"]))).status_code == 200
+
+    line = next(json.loads(l) for l in capsys.readouterr().out.splitlines()
+                if l.strip() and json.loads(l)["event"] == "auth.unmapped_roles")
+    assert line["level"] == "warning"
+    assert line["unrecognised_role_count"] == 1
+    # What this deployment *would* have accepted, so the fix is one comparison
+    # rather than a search through the source.
+    assert "administrator" in line["known"]
+
+
+def test_an_administrator_name_is_never_what_gets_dropped(oidc_client):
+    """The narrowing must not be able to cost anybody a privilege. An admin name
+    is one this deployment maps by definition, so it survives by construction --
+    but it is the failure that would matter, so it is asserted."""
+    client, provider = oidc_client
+    body = client.get("/auth/me", headers=bearer(provider.token(
+        roles=["ena-utm", "administrator", "librechat-user"]))).json()
+
+    assert body["roles"] == ["administrator"]
+    assert body["role"] == "admin"
+    assert body["unrecognised_role_count"] == 2

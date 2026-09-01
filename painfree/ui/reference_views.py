@@ -15,7 +15,7 @@ import datetime as _dt
 
 from fastapi import APIRouter, Depends, Request
 
-from painfree import access, accounts, identity
+from painfree import access, accounts
 from painfree.authn import PUBLIC_PATHS, requires
 from painfree.errors import ConflictError
 from painfree.identity import Principal, Scope
@@ -123,7 +123,6 @@ def api_reference(request: Request,
         routes=reference.protected_routes(request.app, PUBLIC_PATHS),
         unscoped=reference.unprotected(request.app, PUBLIC_PATHS),
         me=principal.as_response(),
-        unmapped=identity.unknown_roles(principal.roles),
         auth_mode=settings.auth_mode.value,
         # Derived when it is not set, so the page says *why* it is what it is.
         # The same sentence the startup line carries.

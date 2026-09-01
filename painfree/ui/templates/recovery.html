@@ -12,14 +12,36 @@
   <p>{{ t('recovery.what_body') }}</p>
 </div>
 
+{# The valuable sentence is the last one: it turns the custody boundary from
+   the thing that makes these instructions confusing into the reason they are
+   shaped this way. This page is served by the `api` process, which is refused
+   the custody secret and would not start if it were handed one. #}
+<div class="card">
+  <strong>{{ t('recovery.where_title') }}</strong>
+  <p>{{ t('recovery.where_body') }}</p>
+  <p>{{ t('recovery.where_boundary') }}</p>
+</div>
+
 <table class="rows">
   <tr><th>{{ t('recovery.key_id') }}</th>
       <td>{% if card.rotation_unfinished %}<code>{{ card.key_ids | join(', ') }}</code>
           <span class="hint">{{ t('recovery.rotation_unfinished') }}</span>
           {% elif card.key_id %}<code>{{ card.key_id }}</code>
           {% else %}{{ t('recovery.no_keys_yet') }}{% endif %}</td></tr>
-  <tr><th>{{ t('recovery.file') }}</th><td><code>{{ card.secret_path }}</code></td></tr>
-  <tr><th>{{ t('recovery.command') }}</th><td><code>{{ card.backup_command }}</code></td></tr>
+  {# Both of these are relative paths, on a page reached in a browser, in a
+     deployment that is containerised by definition. Saying "on the host" and
+     then naming no host sends the reader to the container this page came from
+     -- where the file is absent by design, which reads as missing rather than
+     as elsewhere. Their second guess is worse: the worker *does* hold it, so
+     `exec ... cat` works, and it is the one thing the closing warning on this
+     page tells them not to do. So the anchor is named, and the boundary is
+     given as the reason rather than left to be discovered. #}
+  <tr><th>{{ t('recovery.file') }}</th>
+      <td><code>{{ card.secret_path }}</code>
+          <span class="hint">{{ t('recovery.relative_to') }}</span></td></tr>
+  <tr><th>{{ t('recovery.command') }}</th>
+      <td><code>{{ card.backup_command }}</code>
+          <span class="hint">{{ t('recovery.host_shell') }}</span></td></tr>
   <tr><th>{{ t('recovery.version') }}</th>
       <td><code>{{ card.version }}</code> <span class="hint">{{ card.git_sha }}</span></td></tr>
   <tr><th>{{ t('recovery.acknowledged') }}</th>

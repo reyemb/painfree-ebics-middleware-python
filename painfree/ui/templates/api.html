@@ -98,12 +98,16 @@
       <em>{{ t('api.no_grants') }}</em>
     {% endif %}</td></tr>
   <tr><td>{{ t('api.claimed_roles') }}</td><td>{{ me.roles | join(', ') or t('access.none') }}
-    {% if unmapped %}
-    {# A provider that starts sending a role name this service has no mapping
-       for grants nothing, silently. Saying so here is the difference between a
-       five-minute fix and an afternoon. #}
-    <br><small>{{ t('api.unmapped') }}
-      {% for name in unmapped %}<span class="mono">{{ name }}</span>{{ '' if loop.last else ', ' }}{% endfor %}</small>
+    {% if me.unrecognised_role_count %}
+    {# A count, not the names. The provider sent them, but this deployment does
+       not keep a role name it has no meaning for -- not here either. What a
+       reader needs is that the token carried names and none of them made them
+       an administrator, which is the difference between a five-minute fix and
+       an afternoon; the names themselves are in the provider's own console. #}
+    <br><small>{{ t('api.unmapped') }} {{ me.unrecognised_role_count }}</small>
+    {% endif %}
+    {% if not me.roles and not me.unrecognised_role_count %}
+    <br><small>{{ t('api.no_roles_in_token') }} <span class="mono">{{ provider.roles_claim }}</span></small>
     {% endif %}</td></tr>
   <tr><td>{{ t('api.expires') }}</td><td class="mono">{{ me.expires_at or '—' }}</td></tr>
   <tr><td>{{ t('api.effective_scopes') }}</td><td>

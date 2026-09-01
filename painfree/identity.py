@@ -378,6 +378,11 @@ class Principal:
     #: because it names no connection to be a level *of*. Reset to ``False``
     #: for an `admin`, whose reach is not expressed as grants either.
     oversight: bool = False
+    #: How many role names the provider sent that this deployment does not map.
+    #: A count and never the names: see :func:`recognised_roles`. Non-zero with
+    #: an empty :attr:`roles` is the shape that means "the directory answered,
+    #: and none of it was ours" -- a working login with an empty console.
+    unrecognised_roles: int = 0
     token_id: str | None = None
     expires_at: _dt.datetime | None = None
     display_name: str | None = None
@@ -468,6 +473,11 @@ class Principal:
             "issuer": self.issuer,
             "method": self.method,
             "roles": list(self.roles),
+            # A count, because the names are not kept anywhere -- including
+            # here. What a reader needs from this field is whether the provider
+            # said nothing or said plenty that means nothing to us, and a
+            # number answers that without republishing a directory.
+            "unrecognised_role_count": self.unrecognised_roles,
             "role": Role.admin.value if self.admin else Role.member.value,
             # Reported beside the role and not as one: a reader of this document
             # has to be able to tell "reviews the whole deployment" from "runs
@@ -491,6 +501,7 @@ def build_principal(*, subject: str, issuer: str, method: str,
                     token_id: str | None = None,
                     expires_at: _dt.datetime | None = None,
                     display_name: str | None = None,
+                    unrecognised_roles: int = 0,
                     admin_names: Collection[str] = ADMIN_ROLE_NAMES) -> Principal:
     """The one place a :class:`Principal` is assembled.
 
@@ -527,6 +538,7 @@ def build_principal(*, subject: str, issuer: str, method: str,
                      scopes=frozenset(granted), roles=names,
                      admin=role is Role.admin, grants=tuple(held),
                      oversight=oversight,
+                     unrecognised_roles=unrecognised_roles,
                      token_id=token_id, expires_at=expires_at,
                      display_name=display_name)
 
@@ -555,6 +567,40 @@ def unknown_roles(roles: Iterable[str],
     """
     recognised = KNOWN_ROLE_NAMES if known is None else known
     return tuple(name for name in roles if name not in recognised)
+
+
+def recognised_roles(roles: Iterable[str],
+                     known: Collection[str] | None = None
+                     ) -> tuple[tuple[str, ...], int]:
+    """The names this deployment maps, and a **count** of everything else.
+
+    The door. Nothing downstream sees a role name this service has no meaning
+    for -- not the principal, not the session row, not the audit trail -- and
+    the remainder survives as a number.
+
+    A real directory is not built for one service. On a shared realm a single
+    sign-in can carry thirty-odd names covering funding approval, payouts,
+    accounting and analytics, of which this service understands two. Keeping
+    the rest cost three things and bought none: `auth.unmapped_roles` fired on
+    every login and stopped being a diagnostic, ``user_session.roles`` grew to
+    hundreds of bytes that decide nothing, and the audit log -- the one table a
+    deployment deliberately never prunes -- accumulated a durable map of who
+    may do what across an entire organisation. A service whose whole purpose is
+    custody of bank keys should not also become the archive of somebody else's
+    authorization model, and least of all by accident.
+
+    So the intersection happens once, here, rather than at each of the three
+    places that would otherwise have to remember. The count is kept because
+    "the token carried names we do not map" is still worth knowing -- it is the
+    difference between a provider sending nothing and a provider sending
+    plenty, none of it ours -- and a number cannot identify anybody.
+
+    Privilege is unaffected: an administrator name is one this deployment maps
+    by definition, so it is never what gets dropped.
+    """
+    accepted = KNOWN_ROLE_NAMES if known is None else known
+    kept = tuple(name for name in roles if name in accepted)
+    return kept, sum(1 for name in roles if name not in accepted)
 
 
 def effective_scopes(roles: Iterable[str],
@@ -608,5 +654,5 @@ __all__ = ["ACTOR_TYPES", "ADMIN_ROLE_NAMES", "ADMIN_SCOPES", "BASIC", "BEARER",
            "LOCAL_ISSUER",
            "LEVEL_SCOPES", "Level", "OVERSIGHT_SCOPES", "Principal",
            "ROLE_SCOPES", "Role", "SESSION", "Scope", "WRITE_SCOPES",
-           "build_principal", "claim_at", "effective_scopes", "role_for",
-           "scopes_for", "string_list", "unknown_roles"]
+           "build_principal", "claim_at", "effective_scopes", "recognised_roles",
+           "role_for", "scopes_for", "string_list", "unknown_roles"]

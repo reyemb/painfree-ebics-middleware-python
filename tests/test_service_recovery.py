@@ -172,3 +172,25 @@ def test_a_half_finished_rotation_is_said_rather_than_hidden(recovery):
 
     assert two.rotation_unfinished is True
     assert two.key_id is None
+
+
+def test_the_instructions_name_the_host_they_are_relative_to(console):
+    """Two relative paths, on a page reached in a browser, in a deployment that
+    is containerised by definition.
+
+    Saying "on the host" and then naming no host sends the reader into the
+    container this page came from -- where the file is absent *by design*, which
+    reads as missing rather than as elsewhere. Their next guess is worse: the
+    worker does hold it, so `exec ... cat` works, and it is precisely what this
+    page's own closing warning tells them not to do. So the anchor is named, and
+    the custody boundary is given as the reason rather than left to be found.
+    """
+    page = console.get("/ui/recovery")
+    downloaded = console.get("/ui/recovery/card.txt")
+
+    for text in (page.text, downloaded.text):
+        assert "compose.yaml" in text, "the paths are relative to nothing"
+    assert "host shell" in downloaded.text
+    assert "Not inside a container" in downloaded.text
+    # The sentence that turns the boundary from a confusion into the reason.
+    assert "cannot read the custody secret" in downloaded.text

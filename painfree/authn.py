@@ -378,18 +378,54 @@ class Authenticator:
                               method: str) -> Principal:
         """Verified claims to privileges. See :mod:`painfree.identity` for the rule."""
         settings = self.settings
-        roles = identity.string_list(
-            identity.claim_at(claims, settings.oidc_roles_claim))
+        raw_roles = identity.claim_at(claims, settings.oidc_roles_claim)
+        claimed = identity.string_list(raw_roles)
+        # The door. Everything downstream -- the principal, the session row, the
+        # audit trail -- sees only the names this deployment maps, and the rest
+        # survives as a count. See `identity.recognised_roles`.
+        roles, unrecognised = identity.recognised_roles(
+            claimed, settings.known_role_names)
         raw_scopes = identity.claim_at(claims, settings.oidc_scope_claim)
         requested = (identity.string_list(raw_scopes)
                      if raw_scopes is not None else None)
-        unknown = identity.unknown_roles(roles, settings.known_role_names)
-        if unknown:
-            log.warning("auth.unmapped_roles", roles=list(unknown),
-                        subject=claims.get("sub"),
-                        reason="the provider granted role names this service "
-                               "has no mapping for; they grant nothing")
         subject = str(claims.get("sub"))
+        if not claimed:
+            # Nothing at all, which is the most likely first-run outcome and
+            # had been the quietest. Keycloak's realm-roles mapper ships with
+            # "Add to ID token" *off*, and this service reads the id_token for
+            # browser sessions -- so a correctly assigned administrator signs
+            # in holding nothing, successfully, with no line to read. The claim
+            # path is configuration, so it can be quoted back: an operator who
+            # sees it named against a token that did not carry it knows to look
+            # at the mapper rather than at their directory.
+            log.warning(
+                "auth.no_roles_in_token", claim=settings.oidc_roles_claim,
+                subject=subject,
+                present=raw_roles is not None,
+                reason="the configured roles claim carried no names, so this "
+                       "caller is a member holding nothing; a provider must "
+                       "put roles in the id_token, and Keycloak keeps realm "
+                       "roles out of it unless the realm roles mapper has "
+                       "'Add to ID token' enabled")
+        elif not roles:
+            # The directory answered, and none of it was ours. This is the case
+            # that actually indicates a misconfigured role name, so it is the
+            # one that keeps `warning`.
+            log.warning("auth.unmapped_roles", subject=subject,
+                        claim=settings.oidc_roles_claim,
+                        unrecognised_role_count=unrecognised,
+                        known=sorted(settings.known_role_names),
+                        reason="the provider granted names, none of which this "
+                               "deployment maps; this caller is a member "
+                               "holding nothing")
+        elif unrecognised:
+            # A shared realm carrying somebody else's roles alongside ours is
+            # the ordinary case, not a fault, and a warning on every login is
+            # not a diagnostic. Info, and a count.
+            log.info("auth.unmapped_roles", subject=subject,
+                     unrecognised_role_count=unrecognised,
+                     reason="names this deployment does not map travelled with "
+                            "ones it does; they grant nothing and are not kept")
         reach = self.grants.reach_for(subject)
         return identity.build_principal(
             subject=subject,
@@ -399,6 +435,7 @@ class Authenticator:
             grants=reach.grants,
             oversight=reach.oversight,
             requested=requested,
+            unrecognised_roles=unrecognised,
             admin_names=self.settings.admin_role_names,
             token_id=claims.get("jti"),
             expires_at=tokens.expiry_of(claims),
@@ -813,8 +850,12 @@ def callback(request: Request, code: str | None = None, state: str | None = None
         subject=principal.subject, issuer=principal.issuer,
         roles=principal.roles, display_name=principal.display_name)
     audit: AuditLog = request.app.state.audit
+    # `principal.roles` is already narrowed to what this deployment maps, so
+    # the row the trail never prunes carries this service's own model and a
+    # count of the rest -- not a copy of the directory's.
     audit.record("auth.session_established", actor=principal.actor(),
                  detail={"mode": "oidc", "roles": list(principal.roles),
+                         "unrecognised_role_count": principal.unrecognised_roles,
                          "scopes": sorted(s.value for s in principal.scopes)})
 
     response = RedirectResponse(oidc.safe_redirect(claimed["redirect_to"]),
