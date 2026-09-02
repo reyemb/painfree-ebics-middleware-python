@@ -276,6 +276,7 @@ def render(request: Request, template: str, status_code: int = 200,
         request=request,
         principal=principal,
         may=may_for(principal),
+        may_on=may_on_for(principal),
         request_id=context().get("request_id"),
         alerts=alerts,
         alert_total=notifications.total(alerts),
@@ -286,6 +287,11 @@ def render(request: Request, template: str, status_code: int = 200,
         language_name=i18n.NATIVE_NAMES[locale],
         language_links=i18n.switch_links(request),
         custody_unacknowledged=unacknowledged,
+        # On every page, in the drawer, because "which version is
+        # running" is asked at exactly the moment somebody cannot get
+        # to a shell -- reading a bug report, or on the phone to a bank.
+        version=getattr(settings, "version", None),
+        git_sha=getattr(settings, "git_sha", None),
         local_accounts=local_accounts,
         **values,
     )
@@ -318,6 +324,26 @@ def may_for(principal: Principal | None):
     return check
 
 
+def may_on_for(principal: Principal | None):
+    """``may_on('payments:submit', id)`` for a template. The narrower question.
+
+    :func:`may_for` asks whether a caller holds a scope *anywhere*, which is the
+    right question for a nav entry and the wrong one for a button on one bank's
+    page: a member granted `payments:submit` at connection A would be shown the
+    button on connection B, press it, and be refused by the route. Hiding is a
+    courtesy rather than the control either way -- the route decides -- but a
+    courtesy that points somebody at a refusal is not one.
+    """
+    def check(scope: str, connection_id: str | None) -> bool:
+        if principal is None:
+            return False
+        try:
+            return principal.may(Scope(scope), connection_id)
+        except ValueError:  # pragma: no cover - a template naming no real scope
+            return False
+    return check
+
+
 def principal_or_none(request: Request) -> Principal | None:
     try:
         return principal_of(request)
@@ -326,5 +352,6 @@ def principal_or_none(request: Request) -> Principal | None:
 
 
 __all__ = ["AUDIT_TARGETS", "STATIC", "STYLESHEET", "TEMPLATES",
-           "THEME_SCRIPT", "audit_links", "may_for", "principal_or_none",
+           "THEME_SCRIPT", "audit_links", "may_for", "may_on_for",
+           "principal_or_none",
            "render", "wants_html"]

@@ -184,6 +184,13 @@ PER_CONNECTION: tuple[tuple[str, str, object], ...] = (
     ("GET", "/ui/connections/{cid}/keys/bank-keys", None),
     ("POST", "/ui/connections/{cid}/keys/create_keys", "form"),
     ("GET", "/ui/connections/{cid}/letter", None),
+    # The console's hand-raised payment: the form, the preview it builds
+    # and the confirmation that actually sends. All three reach one
+    # bank's data and the third one moves money, so all three are
+    # attacked rather than only the one that writes.
+    ("GET", "/ui/connections/{cid}/payment", None),
+    ("POST", "/ui/connections/{cid}/payment/preview", "form"),
+    ("POST", "/ui/connections/{cid}/payment", "form"),
     ("GET", "/ui/connections/{cid}/access", None),
     ("POST", "/ui/connections/{cid}/access", "form"),
     ("POST", "/ui/connections/{cid}/access/revoke", "form"),

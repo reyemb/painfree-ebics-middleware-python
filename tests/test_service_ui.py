@@ -571,3 +571,41 @@ def test_the_letter_says_which_hash_it_quotes(console):
     # H005 quotes the certificate's, and the letter says so in words.
     assert "X.509 certificate" in page.text
     assert "certificate" in page.text and "public_key" not in page.text
+
+
+def test_the_drawer_says_which_version_is_running(console):
+    """On every page, because of when the question gets asked.
+
+    "Which version is this?" comes up while somebody is writing a bug report or
+    is on the phone to a bank -- neither of which is a moment to go and find a
+    shell on the host. It is in the drawer rather than on one page for the same
+    reason the custody banner is on every page: a fact that is only where
+    somebody remembered to put it is a fact nobody finds.
+    """
+    from painfree import __version__
+
+    client, _engine, _connection = console
+    page = client.get("/ui/connections", headers=dev_credentials())
+
+    assert "pf-drawer-footer" in page.text
+    assert f"painfree {__version__}" in page.text
+
+
+def test_the_commit_appears_beside_it_only_when_the_build_set_one(
+        custody_settings):
+    """Two deployments can run one version number and differ, which is exactly
+    when the commit matters. `unknown` is the unbuilt default and would be
+    noise on every page of every development run, so it is left out."""
+    built = custody_settings.model_copy(
+        update={"git_sha": "0123456789abcdef0123"})
+    with TestClient(create_app(built)) as browser:
+        page = browser.get("/ui/connections", headers=dev_credentials())
+    assert "0123456789ab" in page.text
+    # Twelve characters, not twenty: enough to name a commit, short enough to
+    # sit on one line in a 264px column.
+    assert "0123456789abcdef" not in page.text
+
+    with TestClient(create_app(
+            custody_settings.model_copy(update={"git_sha": "unknown"}))) as plain:
+        page = plain.get("/ui/connections", headers=dev_credentials())
+    assert "unknown" not in page.text

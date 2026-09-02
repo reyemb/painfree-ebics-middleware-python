@@ -48,7 +48,8 @@ from dataclasses import dataclass
 
 from lxml import etree
 
-from .btf import Service, append_btd_order_params, append_btu_order_params
+from .btf import (Service, append_btd_order_params, append_btu_order_params,
+                  append_standard_order_params)
 from .certificates import certificate_der
 from .errors import CertificateError, RequestError
 from .keys import EbicsKey
@@ -68,6 +69,8 @@ __all__ = [
     "Product",
     "RequestContext",
     "append_data_transfer",
+    "ADMIN_DOWNLOADS",
+    "build_admin_download_request",
     "build_btd_request",
     "build_btu_request",
     "build_hia_request",
@@ -286,6 +289,61 @@ def build_btd_request(
             details, service, date_range=date_range, parameters=parameters),
     )
     return root
+
+
+#: The administrative downloads this engine can ask for, and what each answers.
+#: All three are ``StandardOrderParams`` orders -- no BTF, because none of them
+#: is business traffic -- and all three come back as ordinary encrypted,
+#: compressed order data over the same three-phase download a ``BTD`` uses.
+#:
+#: They exist to replace a PDF. A bank's EBICS parameter sheet is what an
+#: operator otherwise reads to find out which BTFs the bank will accept, and a
+#: sheet is a document that goes out of date without telling anybody. These ask
+#: the bank instead.
+ADMIN_DOWNLOADS: dict[str, str] = {
+    "HAA": "the order types this subscriber may retrieve",
+    "HTD": "the customer and subscriber data the bank holds, and its BTFs",
+    "HPD": "the bank's own parameters: versions, algorithms, limits",
+}
+
+
+def build_admin_download_request(
+    context: RequestContext,
+    admin_order_type: str,
+    *,
+    authentication_key: EbicsKey,
+    bank_authentication_key: EbicsKey,
+    bank_encryption_key: EbicsKey,
+    date_range: tuple[str, str] | None = None,
+    nonce: str | None = None,
+    timestamp: str | None = None,
+    schema_location: str | None = None,
+) -> etree._Element:
+    """Initialisation for an administrative download: ``HAA``, ``HTD``, ``HPD``.
+
+    The same signed ``ebicsRequest`` a ``BTD`` opens with, differing in one
+    element: ``StandardOrderParams`` where a ``BTD`` puts ``BTDOrderParams``.
+    Both substitute into the mandatory ``OrderParams`` of
+    ``StaticHeaderOrderDetailsType``, which is why this shares
+    :func:`_initialisation_request` rather than being built separately -- the
+    header, the bank digests and the signature are not different problems here,
+    and a second copy of them is a second thing to get wrong.
+
+    The body is empty, like every download's.
+    """
+    if admin_order_type not in ADMIN_DOWNLOADS:
+        raise RequestError(
+            f"{admin_order_type!r} is not an administrative download this "
+            f"engine builds; it knows "
+            f"{', '.join(sorted(ADMIN_DOWNLOADS))}")
+    return _initialisation_request(
+        context, admin_order_type, authentication_key=authentication_key,
+        bank_authentication_key=bank_authentication_key,
+        bank_encryption_key=bank_encryption_key,
+        nonce=nonce, timestamp=timestamp, schema_location=schema_location,
+        order_params=lambda details: append_standard_order_params(
+            details, date_range=date_range),
+    )
 
 
 def build_btu_request(

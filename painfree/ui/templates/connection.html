@@ -41,6 +41,12 @@
   {% if subscriber_keys %}
   <a class="button secondary" href="/ui/connections/{{ connection.connection_id }}/letter">{{ t('connection.ini_letter') }}</a>
   {% endif %}
+  {# Offered only once the bank has activated the subscriber. A submit button on
+     a connection that cannot send produces a refusal an operator has to read
+     to understand, where an absent button is already the explanation. #}
+  {% if connection.initialised and may_on('payments:submit', connection.connection_id) %}
+  <a class="button secondary" href="/ui/connections/{{ connection.connection_id }}/payment">{{ t('connection.test_payment') }}</a>
+  {% endif %}
   {% if may('connections:write') %}
   <a class="button secondary" href="/ui/connections/{{ connection.connection_id }}/edit">{{ t('connection.edit') }}</a>
 {% endif %}

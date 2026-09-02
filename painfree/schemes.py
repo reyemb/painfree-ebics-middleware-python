@@ -321,7 +321,26 @@ class SchemeProfiles:
 
     default: PaymentScheme = PaymentScheme.NORMAL
     normal: SchemeProfile = DEFAULT_NORMAL
-    instant: SchemeProfile | None = DEFAULT_INSTANT
+    #: ``None`` until somebody configures it, which means this connection
+    #: cannot send an instant credit transfer and says so locally.
+    #:
+    #: It used to default to :data:`DEFAULT_INSTANT`, and that was wrong for
+    #: every connection this engine can create. An instant upload is announced
+    #: with a BTF the bank has to have in its catalogue, and the shipped one is
+    #: the EPC SEPA convention -- the *euro* scheme. A Swiss bank on SIC
+    #: publishes its own triplet, and plenty publish no instant row at all: at
+    #: least one cantonal bank's whole upload catalogue is a single
+    #: ``MCT / CH / pain.001.09``. Against those, a populated default made
+    #: ``instant`` fail at the bank with ``091112`` and made
+    #: ``instant_or_normal`` spend a signed upload and a round trip on every
+    #: payment before falling back.
+    #:
+    #: Unset, both are decided here instead: ``instant`` is refused before
+    #: anything is signed, naming the reason, and ``instant_or_normal`` goes
+    #: out as an ordinary transfer first time. A deployment whose bank really
+    #: does instant sets the triplet the bank publishes, which is the only way
+    #: it was ever going to work.
+    instant: SchemeProfile | None = None
     #: The whitelist above, per connection.
     instant_refusal_codes: tuple[str, ...] = DEFAULT_REFUSAL_CODES
 
@@ -379,7 +398,15 @@ class SchemeProfiles:
             return cls()
         instant: SchemeProfile | None
         if "instant" not in value:
-            instant = DEFAULT_INSTANT
+            # A stored connection that never named one has none. On an
+            # upgrade this takes the instant profile away from any
+            # connection that was only ever relying on the old
+            # default -- deliberately, because that default was the
+            # euro convention and was not going to be accepted. A
+            # deployment sending instant successfully configured the
+            # triplet its bank publishes, so it has the key and keeps
+            # it.
+            instant = None
         elif value["instant"] is None:
             instant = None
         else:

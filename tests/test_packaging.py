@@ -246,3 +246,56 @@ def test_every_oidc_setting_reaches_the_api_container():
         assert f"PAINFREE_{name.upper()}:" in api, (
             f"{name} is declared in the configuration and reaches no container: "
             f"a deployment cannot set it")
+
+
+# --- the README's own examples ------------------------------------------------
+
+def test_every_payment_in_the_readme_is_one_this_service_accepts():
+    """The examples somebody will paste, run through the code that judges them.
+
+    A README body that no longer parses is worse than no example: it is read as
+    authoritative, pasted, and refused with a message about a field the reader
+    did not choose. So every JSON payment block is validated by the model the
+    API uses, checked against the Swiss Payment Standards rules, built, and put
+    through the official ISO 20022 schema -- the same four steps a submission
+    takes, so a field renamed in the model fails here rather than in somebody's
+    terminal.
+
+    Skipped rather than failed when the README is absent, because it is not in
+    the source distribution and the suite ships inside one.
+    """
+    import datetime as _dt
+    import json
+
+    from painfree import pain001, payments, schemes
+
+    readme = REPO_ROOT / "README.md"
+    if not readme.exists():  # pragma: no cover - running from an sdist
+        pytest.skip("no README.md; this is not the repository")
+
+    blocks = re.findall(r"```json\n(.*?)```", readme.read_text(encoding="utf-8"),
+                        re.S)
+    payments_found = 0
+    for number, block in enumerate(blocks, start=1):
+        body = json.loads(block)
+        # The file carries other JSON than payments -- a webhook envelope, a
+        # log line. A payment is the one with a debtor.
+        if "debtor" not in body:
+            continue
+        payments_found += 1
+        instruction = payments.PaymentInstruction.model_validate(body)
+        assert payments.swiss_failures(instruction) == [], (
+            f"README json block {number} breaks a Swiss rule")
+        profiles = schemes.SchemeProfiles()
+        decision = schemes.resolve(profiles, instruction=instruction)
+        document = pain001.build(
+            instruction, message_id=pain001.new_message_id(),
+            created_at=_dt.datetime.now(_dt.timezone.utc),
+            payment_type=profiles.profile(decision.effective),
+            per_transaction=decision.per_transaction)
+        pain001.validate_document(document)
+
+    # Both of them: the ordinary transfer and the instant one. A README that
+    # lost an example would otherwise pass this test by having nothing to check.
+    assert payments_found == 2, (
+        f"expected 2 payment examples in the README, found {payments_found}")

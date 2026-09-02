@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}{{ t('payment_new.title') }} — painfree{% endblock %}
+{% block body %}
+<h1>{{ t('payment_new.heading') }}</h1>
+<p class="lede">{{ t('payment_new.lede') }}</p>
+
+{# The two refusals an operator can hit before the bank is involved -- the
+   model's own shape rules and the Swiss Payment Standards rules -- render as
+   one list. To the person fixing them they are the same kind of problem, and
+   the location is the name of the input they typed into. #}
+{% if failures %}
+<div class="card warn">
+  <strong>{{ t('payment_new.refused') }}</strong>
+  <table class="rows">
+    <tr><th>{{ t('payment_new.field') }}</th><th>{{ t('payment_new.problem') }}</th></tr>
+    {% for failure in failures %}
+    <tr><td><code>{{ failure.location }}</code></td>
+        <td>{{ failure.message }}<br><span class="hint mono">{{ failure.rule }}</span></td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+
+{% if not connection.initialised %}
+<div class="card warn">
+  <strong>{{ t('payment_new.not_initialised') }}</strong>
+  <p>{{ t('payment_new.not_initialised_body') }}</p>
+</div>
+{% endif %}
+
+<form class="stack" method="post"
+      action="/ui/connections/{{ connection.connection_id }}/payment/preview">
+
+  <h2>{{ t('payment_new.debtor') }}</h2>
+  <label for="debtor_name">{{ t('payment_new.debtor_name') }}</label>
+  <input type="text" id="debtor_name" name="debtor_name" required
+         value="{{ entered.debtor_name }}">
+
+  <label for="debtor_iban">{{ t('payment_new.debtor_iban') }}
+    <span class="hint">{{ t('payment_new.debtor_iban_hint') }}</span>
+  </label>
+  <input type="text" id="debtor_iban" name="debtor_iban" required class="mono"
+         value="{{ entered.debtor_iban }}" placeholder="CH93 0076 2011 6238 5295 7">
+
+  <label for="debtor_bic">{{ t('payment_new.debtor_bic') }}
+    <span class="hint">{{ t('common.optional') }}</span>
+  </label>
+  <input type="text" id="debtor_bic" name="debtor_bic" class="mono"
+         value="{{ entered.debtor_bic }}">
+
+  <h2>{{ t('payment_new.creditor') }}</h2>
+  <label for="creditor_name">{{ t('payment_new.creditor_name') }}</label>
+  <input type="text" id="creditor_name" name="creditor_name" required
+         value="{{ entered.creditor_name }}">
+
+  <label for="creditor_iban">{{ t('payment_new.creditor_iban') }}</label>
+  <input type="text" id="creditor_iban" name="creditor_iban" required class="mono"
+         value="{{ entered.creditor_iban }}">
+
+  <label for="creditor_bic">{{ t('payment_new.creditor_bic') }}
+    <span class="hint">{{ t('common.optional') }}</span>
+  </label>
+  <input type="text" id="creditor_bic" name="creditor_bic" class="mono"
+         value="{{ entered.creditor_bic }}">
+
+  <h2>{{ t('payment_new.the_payment') }}</h2>
+  <label for="amount">{{ t('payment_new.amount') }}
+    <span class="hint">{{ t('payment_new.amount_hint') }}</span>
+  </label>
+  <input type="text" id="amount" name="amount" required class="mono"
+         value="{{ entered.amount }}" placeholder="1.00" inputmode="decimal">
+
+  <label for="currency">{{ t('payment_new.currency') }}</label>
+  <input type="text" id="currency" name="currency" required class="mono"
+         maxlength="3" value="{{ entered.currency }}">
+
+  <label for="requested_execution_date">{{ t('payment_new.execution_date') }}
+    <span class="hint">{{ t('payment_new.execution_date_hint') }}</span>
+  </label>
+  <input type="date" id="requested_execution_date" name="requested_execution_date"
+         required value="{{ entered.requested_execution_date }}">
+
+  {# QRR and SCOR are not interchangeable and the rule about which goes with
+     which account is in `painfree.sps`, not here. The form offers the choice
+     and lets that module refuse the combination. #}
+  <label for="reference_type">{{ t('payment_new.reference_type') }}
+    <span class="hint">{{ t('payment_new.reference_type_hint') }}</span>
+  </label>
+  <select id="reference_type" name="reference_type">
+    <option value="NONE" {{ 'selected' if entered.reference_type == 'NONE' else '' }}>{{ t('payment_new.reference_none') }}</option>
+    <option value="QRR" {{ 'selected' if entered.reference_type == 'QRR' else '' }}>QRR — {{ t('payment_new.reference_qrr') }}</option>
+    <option value="SCOR" {{ 'selected' if entered.reference_type == 'SCOR' else '' }}>SCOR — {{ t('payment_new.reference_scor') }}</option>
+  </select>
+
+  <label for="reference">{{ t('payment_new.reference') }}</label>
+  <input type="text" id="reference" name="reference" class="mono"
+         value="{{ entered.reference }}">
+
+  <label for="remittance_information">{{ t('payment_new.remittance') }}
+    <span class="hint">{{ t('payment_new.remittance_hint') }}</span>
+  </label>
+  <input type="text" id="remittance_information" name="remittance_information"
+         maxlength="140" value="{{ entered.remittance_information }}">
+
+  <label for="end_to_end_id">{{ t('payment_new.end_to_end_id') }}
+    <span class="hint">{{ t('payment_new.end_to_end_id_hint') }}</span>
+  </label>
+  <input type="text" id="end_to_end_id" name="end_to_end_id" class="mono"
+         maxlength="35" value="{{ entered.end_to_end_id }}">
+
+  <label for="scheme">{{ t('payment_new.scheme') }}
+    <span class="hint">{{ t('payment_new.scheme_hint') }}</span>
+  </label>
+  <select id="scheme" name="scheme">
+    <option value="" {{ 'selected' if not entered.scheme else '' }}>{{ t('payment_new.scheme_default') }}</option>
+    <option value="normal" {{ 'selected' if entered.scheme == 'normal' else '' }}>normal</option>
+    <option value="instant" {{ 'selected' if entered.scheme == 'instant' else '' }}>instant</option>
+    <option value="instant_or_normal" {{ 'selected' if entered.scheme == 'instant_or_normal' else '' }}>instant_or_normal</option>
+  </select>
+
+  <div class="actions">
+    <button type="submit">{{ t('payment_new.preview') }}</button>
+    <a class="button secondary"
+       href="/ui/connections/{{ connection.connection_id }}">{{ t('common.cancel') }}</a>
+  </div>
+  <p class="hint">{{ t('payment_new.preview_hint') }}</p>
+</form>
+{% endblock %}

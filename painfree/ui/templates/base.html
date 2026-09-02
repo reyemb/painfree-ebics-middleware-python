@@ -257,6 +257,18 @@
       {{ item('/ui/api', t('nav.api'), icons.api(),
               request.url.path.startswith('/ui/api')) }}
     </ul>
+
+    {# Which version is running, on every page. The question is asked
+       when somebody is writing a bug report or is on the phone to a
+       bank -- neither of which is a moment to go and find a shell. The
+       commit is beside it because two deployments can run one version
+       number and differ, which is exactly when it matters. #}
+    <div class="pf-drawer-footer">
+      <span class="pf-version">painfree {{ version }}</span>
+      {% if git_sha and git_sha != "unknown" %}
+      <span class="pf-version-sha mono">{{ git_sha[:12] }}</span>
+      {% endif %}
+    </div>
     </div>
   </nav>
   {% endif %}

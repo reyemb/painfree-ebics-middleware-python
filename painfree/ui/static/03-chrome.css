@@ -350,6 +350,29 @@
 }
 .pf-drawer-heading:first-child { margin-top: var(--pf-space-1); }
 
+/* The running version, at the foot of the drawer. Quiet on purpose: it is
+   reference rather than navigation, and it is read once when somebody needs
+   it rather than scanned on every page. It scrolls with the column instead
+   of pinning to the bottom, because a drawer that is taller than the
+   viewport would otherwise have it floating over the last nav entry. */
+.pf-drawer-footer {
+  margin-top: var(--pf-space-6);
+  padding: var(--pf-space-3) var(--pf-space-4) 0;
+  border-top: 1px solid var(--pf-outline-variant);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pf-space-1) var(--pf-space-2);
+  align-items: baseline;
+}
+.pf-version {
+  font: var(--pf-label-medium);
+  color: var(--pf-on-surface-variant);
+}
+.pf-version-sha {
+  font-size: 11px;
+  color: var(--pf-outline);
+}
+
 .pf-nav { list-style: none; margin: 0; padding: 0; }
 .pf-nav li { margin: 0; }
 

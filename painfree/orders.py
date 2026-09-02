@@ -207,6 +207,25 @@ class Submission:
     replayed: bool
 
 
+@dataclass(frozen=True, slots=True)
+class Preview:
+    """What a submission would produce, without having produced it.
+
+    Carries the document rather than a summary of it: the question an operator
+    is answering is whether *this* is what should reach the bank, and a
+    rendering of the fields they already typed cannot answer it.
+    """
+
+    connection_id: str
+    decision: SchemeDecision
+    profile: Any
+    document: bytes
+    message_id: str
+    transaction_count: int
+    control_sum: str
+    currency: str
+
+
 def fingerprint(connection_id: str,
                 instruction: payments.PaymentInstruction) -> str:
     """A canonical SHA-256 of what was asked for.
@@ -408,6 +427,66 @@ class OrderStore:
                 }
         assert live is not None  # the live attempt is always first
         return {"order": live, "attempts": attempts}
+
+    def preview(self, connection_id: str,
+                instruction: payments.PaymentInstruction,
+                *, software_version: str | None = None) -> "Preview":
+        """Everything :meth:`submit` would do, stopping before the row.
+
+        The console shows an operator what a payment *would* send before it
+        sends it, and the only preview worth showing is one built by the code
+        that does the sending. So this runs the same four steps in the same
+        order -- the connection, the Swiss rules, the scheme decision, the
+        document and its schema -- and differs from :meth:`submit` in what it
+        omits: no idempotency key is consumed, no audit row is written, no
+        order is inserted, and nothing is queued.
+
+        It refuses in exactly the places a submission refuses, which is the
+        point: a preview that accepted what a submission would reject would be
+        worse than no preview, because it would be trusted.
+
+        Two fields are regenerated when the payment is actually sent -- the
+        ``MsgId`` and the ``CreDtTm``, both minted at submission -- so the
+        document here is byte-identical to the one that will go except for
+        those. `tests/test_service_payment_console.py` pins that rather than
+        asserting it in a comment, because it is the claim the console makes
+        to somebody about to move money.
+        """
+        with bind(connection_id=connection_id):
+            connection = self._connections.get(connection_id)
+            if not connection.initialised:
+                raise ConflictError(
+                    f"connection {connection_id!r} is not initialised "
+                    f"(key state {connection.key_state.value}); it cannot "
+                    f"submit payments yet",
+                    detail={"key_state": connection.key_state.value},
+                )
+            # `swiss_failures` and `resolve` rather than `_validate` and
+            # `_decide`: those two record a rejection against an idempotency
+            # key, and a preview has neither a key nor anything to reject.
+            failures = payments.swiss_failures(instruction)
+            if failures:
+                raise sps.ValidationFailed(failures)
+            decision = schemes.resolve(connection.schemes, instruction=instruction)
+            profile = connection.schemes.profile(decision.effective)
+            created_at = _dt.datetime.now(_dt.timezone.utc)
+            msg_id = pain001.new_message_id()
+            document = pain001.build(
+                instruction, message_id=msg_id, created_at=created_at,
+                payment_information_id=(instruction.payment_information_id
+                                        or msg_id),
+                software_version=software_version, payment_type=profile,
+                per_transaction=decision.per_transaction,
+            )
+            pain001.validate_document(document)
+            currency = next(iter(instruction.currencies))
+            return Preview(
+                connection_id=connection_id, decision=decision,
+                profile=profile, document=document, message_id=msg_id,
+                transaction_count=len(instruction.transactions),
+                control_sum=pain001.format_amount(
+                    instruction.control_sum, currency),
+                currency=currency)
 
     def _insert(self, connection_id: str, idempotency_key: str, digest: str,
                 order_id: str, built: dict[str, Any],

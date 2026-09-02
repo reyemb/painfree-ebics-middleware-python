@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}{{ t('payment_preview.title') }} — painfree{% endblock %}
+{% block body %}
+<h1>{{ t('payment_preview.heading') }}</h1>
+<p class="lede">{{ t('payment_preview.lede') }}</p>
+
+{# The misreading this page exists to prevent. A document that builds and
+   passes the official schema has proved exactly that; no key has been opened,
+   nothing has been signed, and the bank has not been asked. Saying so here is
+   cheaper than an operator concluding from a clean preview that a refusal
+   later is painfree's fault. #}
+<div class="card warn">
+  <strong>{{ t('payment_preview.nothing_sent') }}</strong>
+  <p>{{ t('payment_preview.nothing_sent_body') }}</p>
+</div>
+
+<table class="rows">
+  <tr><th>{{ t('common.connection') }}</th>
+      <td><code>{{ connection.connection_id }}</code></td></tr>
+  <tr><th>{{ t('payment_preview.amount') }}</th>
+      <td class="mono"><strong>{{ preview.control_sum }} {{ preview.currency }}</strong></td></tr>
+  <tr><th>{{ t('payment_preview.to') }}</th>
+      <td>{{ entered.creditor_name }}<br><code>{{ entered.creditor_iban }}</code></td></tr>
+  <tr><th>{{ t('payment_preview.from') }}</th>
+      <td>{{ entered.debtor_name }}<br><code>{{ entered.debtor_iban }}</code></td></tr>
+  <tr><th>{{ t('payment_preview.execution_date') }}</th>
+      <td>{{ entered.requested_execution_date }}</td></tr>
+  <tr><th>{{ t('payment_preview.transfers') }}</th>
+      <td>{{ preview.transaction_count }}</td></tr>
+  {# The scheme is a decision, not an echo: what was asked for and what this
+     connection can actually do are different questions, and a downgrade is
+     the answer to the second one. #}
+  <tr><th>{{ t('payment_preview.scheme') }}</th>
+      <td><code>{{ preview.decision.effective.value }}</code>
+        {% if preview.decision.downgraded %}
+        <span class="tag viewer">{{ t('payment_preview.downgraded') }}</span>
+        {% endif %}
+        <br><span class="hint">{{ t('scheme_reason.' ~ preview.decision.reason) }}</span></td></tr>
+  {% if preview.profile.payment_type_summary() %}
+  <tr><th>{{ t('payment_preview.btf') }}</th>
+      <td><code>{{ preview.profile.payment_type_summary() }}</code></td></tr>
+  {% endif %}
+</table>
+
+<h2>{{ t('payment_preview.document') }}</h2>
+<p class="hint">{{ t('payment_preview.document_hint') }}</p>
+<pre class="json">{{ document }}</pre>
+
+<h2>{{ t('payment_preview.send') }}</h2>
+<form class="stack card" method="post"
+      action="/ui/connections/{{ connection.connection_id }}/payment">
+  {# Every field again, so this post is judged by the same parser that judged
+     the preview rather than by a copy of its conclusion. #}
+  {% for name, value in entered.items() %}
+  <input type="hidden" name="{{ name }}" value="{{ value }}">
+  {% endfor %}
+  {# Minted when the preview was rendered, not when this is pressed: a second
+     press is then the same payment replayed, not a second one made. #}
+  <input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
+
+  <p><strong>{{ t('payment_preview.confirm_title') }}</strong></p>
+  <p>{{ t('payment_preview.confirm_body') }}</p>
+  <div class="actions">
+    <button type="submit">{{ t('payment_preview.confirm') }}</button>
+    <a class="button secondary"
+       href="/ui/connections/{{ connection.connection_id }}/payment">{{ t('payment_preview.back') }}</a>
+  </div>
+</form>
+{% endblock %}

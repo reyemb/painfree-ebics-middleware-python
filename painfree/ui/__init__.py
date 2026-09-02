@@ -36,16 +36,18 @@ request id the JSON body would have. The API's error shape is untouched: the
 distinction is made on the ``Accept`` header and the path.
 """
 
-from painfree.ui import access_views, account_views, reference_views
+from painfree.ui import (access_views, account_views, payment_views,
+                         reference_views)
 from painfree.ui.rendering import render, wants_html
 from painfree.ui.views import router
 
-#: Every router the console is made of, in the order they are included. Four
+#: Every router the console is made of, in the order they are included. Five
 #: modules rather than one because `views` reached the 1 000-line cap: the
 #: split is by what a page is *about* -- the work (`views`), the deployment
-#: itself (`reference_views`), who may reach it (`access_views`), and who may
-#: sign in at all when there is no identity provider to ask (`account_views`).
+#: itself (`reference_views`), who may reach it (`access_views`), who may
+#: sign in at all when there is no identity provider to ask (`account_views`),
+#: and the one payment a person raises by hand (`payment_views`).
 ROUTERS = (router, reference_views.router, access_views.router,
-           account_views.router)
+           account_views.router, payment_views.router)
 
 __all__ = ["ROUTERS", "render", "router", "wants_html"]

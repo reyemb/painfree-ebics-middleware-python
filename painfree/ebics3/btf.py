@@ -55,6 +55,7 @@ __all__ = [
     "Service",
     "append_btd_order_params",
     "append_btu_order_params",
+    "append_standard_order_params",
     "append_service",
 ]
 
@@ -191,6 +192,40 @@ def append_btu_order_params(
         _sub(element, namespace, "SignatureFlag",
              requestEDS="true" if request_eds else "false")
     _append_parameters(element, namespace, parameters)
+    return element
+
+
+def append_standard_order_params(
+    parent: etree._Element,
+    *,
+    date_range: tuple[str, str] | None = None,
+) -> etree._Element:
+    """``<StandardOrderParams>`` -- what an *administrative* order carries.
+
+    ``HTD``, ``HPD``, ``HAA`` and the rest of the administrative downloads take
+    no BTF: they are not business traffic and have no service to describe. What
+    H005 requires of them is still an ``OrderParams``, because
+    ``StaticHeaderOrderDetailsType`` declares that element without a
+    ``minOccurs`` -- it is mandatory, and ``StandardOrderParams`` is what
+    substitutes into it for these orders (``ebics_orders_H005.xsd``, the
+    ``substitutionGroup="ebics:OrderParams"`` on line 194).
+
+    So the element is empty and is still not optional. Leaving it out builds a
+    document the H005 schema rejects, which is a bank refusal rather than a
+    local error, and is the kind of thing that costs an afternoon to find.
+
+    ``date_range`` exists because ``StandardOrderParamsType`` allows one -- some
+    banks bound ``HAC`` by it. None of the three orders this was added for uses
+    it, and it stays optional rather than being left out, because adding it back
+    later would mean changing a signature that other things call.
+    """
+    namespace = etree.QName(parent).namespace
+    element = _sub(parent, namespace, "StandardOrderParams")
+    if date_range is not None:
+        start, end = date_range
+        node = _sub(element, namespace, "DateRange")
+        _sub(node, namespace, "Start", start)
+        _sub(node, namespace, "End", end)
     return element
 
 

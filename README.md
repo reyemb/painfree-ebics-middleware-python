@@ -95,11 +95,92 @@ naming the field, rather than from the bank two hours later.
 
 One idempotency key stays one order, and an order can end accepted at most once.
 
+### `payment.json`, an ordinary transfer
+
+One debit account, one execution date, and the transfers to make. Everything
+ISO 20022 needs and this service can derive — the message id, the timestamp,
+the transaction count, the control sum — is derived rather than demanded,
+because a field the caller has to compute is a field the caller computes
+wrongly.
+
+```json
+{
+  "debtor": {
+    "name": "MUSTER AG",
+    "postal_address": {"town": "SELDWYLA", "country": "CH"}
+  },
+  "debtor_iban": "CH5604835012345678009",
+  "requested_execution_date": "2026-09-30",
+  "transactions": [
+    {
+      "amount": "3949.75",
+      "currency": "CHF",
+      "creditor": {
+        "name": "Robert Schneider AG",
+        "postal_address": {
+          "street": "Rue du Lac", "building_number": "1268",
+          "postal_code": "2501", "town": "Biel", "country": "CH"
+        }
+      },
+      "creditor_iban": "CH4431999123000889012",
+      "reference": {"type": "QRR", "reference": "210000000003139471430009017"}
+    }
+  ]
+}
+```
+
+`reference.type` is `QRR` for a Swiss QR reference, `SCOR` for an ISO 11649
+creditor reference, or `NONE`. Which one is allowed depends on the account —
+a QR reference belongs to a QR-IBAN — and the pair is checked before anything
+is built. Use `remittance_information` instead for unstructured text; a
+structured reference and free text together is refused.
+
+### `payment.json`, an instant transfer
+
+The same body with `scheme` added. It is the only difference:
+
+```json
+{
+  "scheme": "instant_or_normal",
+  "debtor": {"name": "MUSTER AG"},
+  "debtor_iban": "CH5604835012345678009",
+  "requested_execution_date": "2026-09-30",
+  "transactions": [
+    {
+      "amount": "42.00",
+      "currency": "CHF",
+      "creditor": {"name": "Robert Schneider AG"},
+      "creditor_iban": "CH4821966000009613388",
+      "remittance_information": "Invoice 2026-114"
+    }
+  ]
+}
+```
+
 **Payment schemes.** A payment carries `normal`, `instant`, or
 `instant_or_normal`, which tries instant and sends an ordinary transfer if the
 bank definitively refuses. A timeout, a dropped connection or an answer that
 will not parse is an unknown outcome rather than a refusal: the order is
 retried carrying the message it already had, so nothing is sent twice.
+`scheme` may also be set per transfer, but every transfer in one message has to
+end up on the same scheme: one upload carries one BTF.
+
+**Instant needs a profile your bank actually publishes, and the default is a
+guess.** An instant upload is announced with a BTF triplet, and the one shipped
+here is the EPC SEPA convention — service option `INST`, `SvcLvl/Cd` `SEPA`,
+`LclInstrm/Cd` `INST`. That is the *euro* scheme. A Swiss bank on SIC instant
+publishes its own triplet and may use `LclInstrm/Prtry` instead, and plenty of
+banks publish none at all, because their EBICS catalogue has one upload row and
+it is `pain.001`.
+
+So check your bank's EBICS parameter sheet before asking for `instant`, and set
+the profile on the connection to whatever it lists. If the bank has no instant
+row, clear the instant profile in the console: with it left populated, `instant`
+fails at the bank with `091112 EBICS_INVALID_ORDER_PARAMS` and
+`instant_or_normal` spends a wasted round trip on every payment before falling
+back. With it cleared, both are decided locally — `instant` is refused before
+anything is signed, and `instant_or_normal` goes out as an ordinary transfer
+first time.
 
 `/ui/api` renders the request body, every endpoint and the privilege it demands,
 generated from the router rather than written down, and links the OpenAPI
