@@ -132,6 +132,52 @@ def test_a_debtor_with_no_bic_still_produces_a_valid_document():
     assert find(document, "CstmrCdtTrfInitn/PmtInf/DbtrAgt/FinInstnId/BICFI") == []
 
 
+def test_a_debtor_agent_with_no_bic_is_empty_rather_than_NOTPROVIDED():
+    """`Othr/Id` of `NOTPROVIDED` is the **EPC SEPA** convention, and a Swiss
+    bank's validator refuses it: *"Das Element 'Othr' soll in diesem Kontext
+    nicht verwendet werden"*.
+
+    It refuses it **after** the file is signed and uploaded, which is why this
+    is worth a test of its own rather than leaving it to `schema_failures`.
+    The XSD accepts `Othr` here perfectly happily -- schema-valid and accepted
+    are different questions, and only the first one is answerable locally, so
+    the one rule this file can enforce is *do not emit the thing that was
+    refused*.
+
+    `DbtrAgt` is mandatory in `PmtInf` and every child of `FinInstnId` is
+    optional, so an empty `FinInstnId` is the honest document: the debit IBAN
+    already identifies the institution.
+    """
+    body = payment_body()
+    body.pop("debtor_bic")
+    document = build(body)
+
+    assert pain001.schema_failures(document) == []
+    agent = parse(document).find(
+        f".//{{{pain001.NAMESPACE}}}DbtrAgt/{{{pain001.NAMESPACE}}}FinInstnId")
+    assert agent is not None, "DbtrAgt is mandatory and must still be there"
+    assert list(agent) == [], (
+        "FinInstnId carries "
+        f"{[etree.QName(child).localname for child in agent]}")
+
+
+def test_no_financial_institution_is_identified_by_a_generic_other():
+    """The whole family, not just the debtor's. `Othr` under a `FinInstnId` is
+    the pattern the bank refused; `Othr` under `CtctDtls` is a different
+    element and is how Swiss banks want the software named, so it stays."""
+    document = build(payment_body(), software_version="0.3.1")
+    tree = parse(document)
+
+    for agent in tree.iter(f"{{{pain001.NAMESPACE}}}FinInstnId"):
+        children = [etree.QName(child).localname for child in agent]
+        assert "Othr" not in children, (
+            f"a FinInstnId carries Othr ({children}), which a Swiss validator "
+            "refuses")
+    # And the software identification is untouched by that rule.
+    assert find(document, "CstmrCdtTrfInitn/GrpHdr/InitgPty/CtctDtls/Othr/"
+                          "Id") == ["painfree", "0.3.1"]
+
+
 def test_the_amount_carries_the_currency_and_its_minor_units():
     document = build(payment_body(transactions=[transfer(amount="100")]))
     tree = parse(document)

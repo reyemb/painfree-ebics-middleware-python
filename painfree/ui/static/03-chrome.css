@@ -335,8 +335,15 @@
 .pf-drawer-inner {
   position: sticky;
   top: var(--pf-app-bar-height);
+  /* Exactly one viewport tall: `min` and `max` together, so the column is a
+     definite height and the footer below can be pushed to the bottom of it.
+     With only `max-height` the box shrinks to its content and "the bottom"
+     means the end of the nav list, which is what it used to do. */
+  min-height: calc(100vh - var(--pf-app-bar-height));
   max-height: calc(100vh - var(--pf-app-bar-height));
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
   padding: var(--pf-space-3) var(--pf-space-3) var(--pf-space-6);
 }
 
@@ -352,12 +359,16 @@
 
 /* The running version, at the foot of the drawer. Quiet on purpose: it is
    reference rather than navigation, and it is read once when somebody needs
-   it rather than scanned on every page. It scrolls with the column instead
-   of pinning to the bottom, because a drawer that is taller than the
-   viewport would otherwise have it floating over the last nav entry. */
+   it rather than scanned on every page.
+
+   `margin-top: auto` in a flex column does both jobs with one rule: it takes
+   up the slack when the nav is shorter than the viewport, putting this at the
+   bottom where it belongs, and contributes nothing when the nav overflows --
+   so a long drawer scrolls and this follows the last entry rather than
+   floating over it. No second rule and no breakpoint for the tall case. */
 .pf-drawer-footer {
-  margin-top: var(--pf-space-6);
-  padding: var(--pf-space-3) var(--pf-space-4) 0;
+  margin-top: auto;
+  padding: var(--pf-space-6) var(--pf-space-4) 0;
   border-top: 1px solid var(--pf-outline-variant);
   display: flex;
   flex-wrap: wrap;
@@ -438,7 +449,11 @@ main {
     border-right: none;
     border-bottom: 1px solid var(--pf-outline-variant);
   }
-  .pf-drawer-inner { position: static; max-height: none; overflow: visible; }
+  /* In flow above the page, so it is as tall as its content and the
+     footer goes back to simply following the nav. */
+  .pf-drawer-inner {
+    position: static; min-height: 0; max-height: none; overflow: visible;
+  }
   main { padding: var(--pf-space-4) var(--pf-space-4) var(--pf-space-7); }
   .pf-app-bar { padding-left: var(--pf-space-2); }
   .pf-brand { margin-left: 0; }

@@ -295,3 +295,72 @@ def test_a_member_without_a_grant_is_told_nothing_about_this_bank(console):
     ):
         assert response.status_code == 404, response.text
     assert _orders(console.app) == []
+
+
+# --- the debit account, offered rather than typed ------------------------------
+
+def _htd(console):
+    """Store an `HTD` for this connection, as the worker would have."""
+    from painfree.catalogue import Catalogue
+
+    from tests.test_service_catalogue import HTD
+    Catalogue(console.app.state.engine).record(
+        CONNECTION, "HTD", document=HTD)
+
+
+def test_the_debit_account_is_offered_from_what_the_bank_published(console):
+    """`HTD` already knows which accounts this subscriber may draw on, so the
+    form stops asking somebody to retype an IBAN it has on file."""
+    _htd(console)
+
+    page = console.get(f"/ui/connections/{CONNECTION}/payment")
+
+    assert 'list="debtor_accounts"' in page.text
+    assert "<datalist" in page.text
+    assert "CH5604835012345678009" in page.text
+    # The label is what makes it pickable rather than a wall of digits.
+    assert "Kontokorrent" in page.text
+
+
+def test_without_an_htd_the_field_stays_typable_and_says_why(console):
+    """A datalist, not a select, and the reason is on the page.
+
+    `AccountInfo` is optional in the schema and a catalogue goes stale, so a
+    closed list would refuse a payment the bank would have taken. An empty
+    dropdown with no explanation would read as *this connection has no
+    accounts*, which is not what it means.
+    """
+    page = console.get(f"/ui/connections/{CONNECTION}/payment")
+
+    assert "<datalist" not in page.text
+    assert 'name="debtor_iban"' in page.text
+    assert "has not been asked" in page.text
+    assert f"/connections/{CONNECTION}/catalogue" in page.text
+
+
+def test_an_account_the_bank_did_not_publish_is_noted_and_not_refused(console):
+    """Worth a second look, not a reason to stop: the published list can be
+    incomplete or out of date, and the bank is the one that decides."""
+    _htd(console)
+
+    page = _preview(console, debtor_iban="CH4821966000009613388")
+
+    assert page.status_code == 200, "a payment was refused on local evidence"
+    assert "not in the bank's list" in page.text
+
+
+def test_an_account_the_bank_published_is_not_flagged(console):
+    _htd(console)
+
+    page = _preview(console)
+
+    assert page.status_code == 200
+    assert "not in the bank's list" not in page.text
+
+
+def test_nothing_is_flagged_when_the_bank_was_never_asked(console):
+    """`None`, not `False`. Warning here would be inventing evidence."""
+    page = _preview(console)
+
+    assert page.status_code == 200
+    assert "not in the bank's list" not in page.text

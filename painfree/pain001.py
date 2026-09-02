@@ -231,15 +231,20 @@ def build(
           instruction.requested_execution_date.isoformat())
     _party(payment, "Dbtr", instruction.debtor)
     _account(payment, "DbtrAcct", instruction.debtor_iban)
+    # `DbtrAgt` is mandatory in `PmtInf` and every child of `FinInstnId` is
+    # optional, so when no BIC was given the honest document is an empty
+    # `FinInstnId`: the debit IBAN already identifies the institution.
+    #
+    # This used to write `Othr/Id` of `NOTPROVIDED`, which is the **EPC SEPA**
+    # convention for "no BIC available" and is not a Swiss one. A Swiss
+    # validator refuses it -- *"Das Element 'Othr' soll in diesem Kontext nicht
+    # verwendet werden"* -- and it refuses it after the file has been signed and
+    # uploaded, which is the expensive place to find out. Schema-valid and
+    # accepted are different questions, and the XSD cannot answer the second.
     debtor_agent = _element(payment, "DbtrAgt")
     financial = _element(debtor_agent, "FinInstnId")
     if instruction.debtor_bic:
         _text(financial, "BICFI", instruction.debtor_bic)
-    else:
-        # `FinInstnId` may legitimately be empty: with an IBAN on the debit
-        # account the bank is already identified, and inventing a BIC we were
-        # not given would be worse than saying nothing.
-        _text(_element(financial, "Othr"), "Id", "NOTPROVIDED")
 
     for transaction in instruction.transactions:
         _transaction(payment, transaction,

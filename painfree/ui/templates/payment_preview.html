@@ -22,7 +22,14 @@
   <tr><th>{{ t('payment_preview.to') }}</th>
       <td>{{ entered.creditor_name }}<br><code>{{ entered.creditor_iban }}</code></td></tr>
   <tr><th>{{ t('payment_preview.from') }}</th>
-      <td>{{ entered.debtor_name }}<br><code>{{ entered.debtor_iban }}</code></td></tr>
+      <td>{{ entered.debtor_name }}<br><code>{{ entered.debtor_iban }}</code>
+        {# Noted, not enforced. The bank's published account list may be
+           incomplete or stale, so this is a thing worth looking at twice
+           rather than a reason to stop -- and `none` means nobody asked. #}
+        {% if debit_published is false %}
+        <br><span class="tag warn">{{ t('payment_preview.debit_not_published') }}</span>
+        <span class="hint">{{ t('payment_preview.debit_not_published_why') }}</span>
+        {% endif %}</td></tr>
   <tr><th>{{ t('payment_preview.execution_date') }}</th>
       <td>{{ entered.requested_execution_date }}</td></tr>
   <tr><th>{{ t('payment_preview.transfers') }}</th>

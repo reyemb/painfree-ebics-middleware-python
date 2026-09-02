@@ -50,6 +50,7 @@ from painfree.identity import Principal, Scope
 from painfree.logging import bind
 from painfree.authn import requires_on
 from painfree.ui.rendering import render
+from painfree.catalogue import Catalogue
 from painfree.ui.views import PREFIX, _orders, _registry, form_data
 
 router = APIRouter(prefix=PREFIX, tags=["console"], include_in_schema=False)
@@ -71,7 +72,44 @@ FIELDS = (
 )
 
 
+def _debit_accounts(request: Request, connection_id: str) -> list[dict]:
+    """The accounts `HTD` says this subscriber may draw on, for the form.
+
+    Offered as suggestions rather than as the only choices. ``AccountInfo`` is
+    ``minOccurs="0"`` in the schema, so a bank may publish none at all; and a
+    catalogue is only as current as the last time somebody fetched it. A
+    ``select`` built from either of those would be a form that refuses a
+    payment the bank would have taken, which is a worse failure than a typo --
+    and the typo is caught anyway, by the IBAN check, before anything is built.
+
+    So the field stays a text input with a datalist behind it: click and pick
+    when the list is right, type when it is not. Empty when no `HTD` has been
+    fetched, which the form says rather than hides.
+    """
+    entry = Catalogue(request.app.state.engine).get(connection_id, "HTD")
+    if entry is None or entry.summary is None:
+        return []
+    return [account for account in entry.summary.get("accounts", [])
+            if account.get("iban")]
+
+
+def _published_debit(request: Request, connection_id: str,
+                     iban: str) -> bool | None:
+    """Is this debit account one the bank published? ``None`` if unknown.
+
+    Three-valued for the same reason the catalogue page is: a bank that was
+    never asked has not said no. Shown on the preview, never enforced.
+    """
+    accounts = _debit_accounts(request, connection_id)
+    if not accounts:
+        return None
+    wanted = (iban or "").replace(" ", "").upper()
+    return any((account["iban"] or "").upper() == wanted
+               for account in accounts)
+
+
 def _see(path: str) -> RedirectResponse:
+
     return RedirectResponse(path, status_code=303)
 
 
@@ -172,7 +210,8 @@ def payment_form(request: Request, connection_id: str,
     with bind(connection_id=connection_id):
         connection = _registry(request).get(connection_id)
         return render(request, "payment_new.html", connection=connection,
-                      entered=_blank(), failures=())
+                      entered=_blank(), failures=(),
+                      accounts=_debit_accounts(request, connection_id))
 
 
 @router.post("/connections/{connection_id}/payment/preview")
@@ -191,6 +230,7 @@ def preview_payment(
         except ValidationError as error:
             return render(request, "payment_new.html", status_code=422,
                           connection=connection, entered=entered,
+                          accounts=_debit_accounts(request, connection_id),
                           failures=failures_from(error))
         try:
             preview = _orders(request).preview(
@@ -199,11 +239,14 @@ def preview_payment(
         except sps.ValidationFailed as refused:
             return render(request, "payment_new.html", status_code=422,
                           connection=connection, entered=entered,
+                          accounts=_debit_accounts(request, connection_id),
                           failures=refused.failures)
         return render(
             request, "payment_preview.html", connection=connection,
             entered=entered, preview=preview,
             document=preview.document.decode("utf-8"),
+            debit_published=_published_debit(
+                request, connection_id, form.get("debtor_iban", "")),
             # Minted here and carried, not minted on the way in: see the module
             # docstring. A second press of confirm has to be the same payment.
             idempotency_key=f"{KEY_PREFIX}{secrets.token_hex(16)}")
@@ -232,6 +275,7 @@ def send_payment(
         except ValidationError as error:
             return render(request, "payment_new.html", status_code=422,
                           connection=connection, entered=entered,
+                          accounts=_debit_accounts(request, connection_id),
                           failures=failures_from(error))
         submission = _orders(request).submit(
             connection_id, idempotency_key=key, instruction=instruction,
