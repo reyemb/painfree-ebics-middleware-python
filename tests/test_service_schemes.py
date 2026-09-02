@@ -59,6 +59,14 @@ INSTANT_ONLY = SchemeProfiles(
                           local_instrument=Code("INST")),
 )
 
+#: The same connection, but instant is what it sends unless told otherwise.
+#: Both of these name their instant profile rather than relying on a default:
+#: there is no longer one, because the shipped triplet was the EPC SEPA
+#: convention and was wrong for every bank this engine can register. A test
+#: that resolves instant has to say which instant it means.
+INSTANT_DEFAULT = SchemeProfiles(default=PaymentScheme.INSTANT,
+                                 instant=INSTANT_ONLY.instant)
+
 
 # --- the decision ----------------------------------------------------------
 
@@ -77,14 +85,14 @@ def test_a_connection_with_no_configuration_sends_what_it_always_sent():
 
 
 def test_the_default_scheme_is_the_connections_when_the_caller_names_none():
-    decision = schemes.resolve(SchemeProfiles(default=PaymentScheme.INSTANT),
+    decision = schemes.resolve(INSTANT_DEFAULT,
                                instruction=instruction())
     assert decision.effective is PaymentScheme.INSTANT
     assert decision.reason == schemes.CONNECTION_DEFAULT
 
 
 def test_a_named_scheme_beats_the_connections_default():
-    decision = schemes.resolve(SchemeProfiles(default=PaymentScheme.INSTANT),
+    decision = schemes.resolve(INSTANT_DEFAULT,
                                instruction=instruction(scheme="normal"))
     assert decision.effective is PaymentScheme.NORMAL
     assert decision.reason == schemes.REQUESTED
@@ -92,12 +100,12 @@ def test_a_named_scheme_beats_the_connections_default():
 
 
 def test_instant_or_normal_plans_a_reserve_and_instant_alone_does_not():
-    optional = schemes.resolve(SchemeProfiles(),
+    optional = schemes.resolve(INSTANT_ONLY,
                                instruction=instruction(scheme="instant_or_normal"))
     assert optional.effective is PaymentScheme.INSTANT
     assert optional.fallback is PaymentScheme.NORMAL
 
-    strict = schemes.resolve(SchemeProfiles(),
+    strict = schemes.resolve(INSTANT_ONLY,
                              instruction=instruction(scheme="instant"))
     assert strict.effective is PaymentScheme.INSTANT
     assert strict.fallback is None
@@ -105,7 +113,7 @@ def test_instant_or_normal_plans_a_reserve_and_instant_alone_does_not():
 
 def test_a_per_transaction_override_names_the_scheme_for_the_message():
     decision = schemes.resolve(
-        SchemeProfiles(),
+        INSTANT_ONLY,
         instruction=instruction(transactions=[transfer(scheme="instant")]))
     assert decision.effective is PaymentScheme.INSTANT
     assert decision.per_transaction is True
@@ -126,7 +134,7 @@ def test_transactions_asking_for_two_schemes_are_refused_by_name():
 
 def test_an_override_that_agrees_with_the_message_is_not_a_mixture():
     decision = schemes.resolve(
-        SchemeProfiles(),
+        INSTANT_ONLY,
         instruction=instruction(scheme="instant",
                                 transactions=[transfer(scheme="instant"),
                                               transfer(scheme="instant")]))
