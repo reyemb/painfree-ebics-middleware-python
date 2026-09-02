@@ -426,9 +426,24 @@
 main {
   flex: 1 1 auto;
   min-width: 0;                       /* or a wide table stretches the column */
-  max-width: var(--pf-reading-width);
   padding: var(--pf-space-5) var(--pf-space-5) var(--pf-space-7);
-  margin: 0 auto;
+}
+
+/* The reading measure lives on the prose, not on the page. `main` used to
+   carry a page-wide `max-width` of 1120px, which kept paragraphs legible and
+   also squeezed every table into it -- so the orders table scrolled
+   sideways inside a card while a third of the window sat empty beside it. A
+   horizontal scrollbar under a table somebody is reading across is a worse
+   failure than a long line, and the two are not the same problem.
+
+   So the cap moves to the elements that are actually prose. `.lede`,
+   `.steps li .body` and `.letter` already carried their own; this is the
+   general paragraph, and it is `ch` rather than pixels because a measure is
+   about characters per line. Tables, cards and the drawer now have the width
+   the window has. */
+main > p,
+main > .card > p {
+  max-width: 88ch;
 }
 
 /* --- narrow viewports -----------------------------------------------------

@@ -240,7 +240,8 @@ class UploadWorker:
             else:
                 state = self._queue.refused(
                     claimed.order_id, return_code=exc.return_code,
-                    report_text=exc.report_text, name=exc.name)
+                    report_text=exc.report_text, name=exc.name,
+                    request=getattr(exc, "request", None))
             return UploadResult(claimed.order_id, state,
                                 return_code=exc.return_code,
                                 report_text=exc.report_text)
@@ -422,7 +423,15 @@ class UploadWorker:
             report_text=parsed.report_text,
             request_bytes=len(body), exchange=exchanges,
         )
-        transaction.feed(root)
+        try:
+            transaction.feed(root)
+        except ebics3.BankRefusedError as refusal:
+            # The one place the refused document is still in hand. It is
+            # attached rather than stored here because this method knows
+            # nothing about orders, and the handler that records the refusal
+            # already has the row.
+            refusal.request = body
+            raise
         return exchanges
 
     # --- the parts that need the custody key -------------------------------

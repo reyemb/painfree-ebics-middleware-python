@@ -278,6 +278,19 @@ payment_order = Table(
     Column("bank_order_id", String(16), nullable=True),
     Column("return_code", String(16), nullable=True),
     Column("report_text", String(1024), nullable=True),
+    # The EBICS request the bank refused, kept verbatim, and what the H005
+    # schemas say about it. A `091113` names no element, so without these an
+    # operator holding one has no next step inside the product and the only
+    # party who can still see the document is the bank.
+    #
+    # Safe to keep: an upload's initialisation carries the electronic
+    # signature and the transaction key wrapped to the *bank's* public half,
+    # and not the payment file -- so this holds no account data and nothing
+    # anyone else can open.
+    Column("refused_request", LargeBinary, nullable=True),
+    # `NULL` means not checked; `[]` means the schema found nothing, which is
+    # a finding rather than an exoneration -- see `ebics3.envelope_schema`.
+    Column("refused_request_errors", JsonBlob, nullable=True),
     # The EBICS `TransactionID`, written the moment the bank assigns it. It is
     # the only handle on an open transaction, and a worker that loses it after
     # uploading twenty segments has to upload them again.

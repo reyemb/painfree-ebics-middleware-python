@@ -79,7 +79,7 @@ def test_a_migrated_deployment_has_no_account_at_all(sqlite_url):
     """
     settings = _basic_settings(sqlite_url)
     engine = db.build_engine(settings)
-    assert db.migrate(engine) == "0017_bank_catalogue"
+    assert db.migrate(engine) == "0018_refused_request"
     from sqlalchemy import select
 
     with engine.connect() as connection:

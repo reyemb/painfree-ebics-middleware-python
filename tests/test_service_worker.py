@@ -190,7 +190,72 @@ def test_a_refusal_is_stored_with_its_return_code_and_report_text(
     assert OrderQueue(engine).claim(worker_id="w2") is None
 
 
+def test_the_refused_request_is_kept_and_checked_against_the_schemas(
+        prepared_bank, custody_settings):
+    """The document the bank refused, so a return code stops being the whole
+    diagnosis.
+
+    `091113 EBICS_INVALID_REQUEST_CONTENT` names no element. Without the
+    request, an operator holding one has no next step inside the product and
+    the only party who can still see it is the bank -- which is how diagnosing
+    the real one took source reading and a telephone call.
+    """
+    engine, _, bank = prepared_bank
+    order_id = submit(engine)
+    report = "[EBICS_INVALID_REQUEST_CONTENT] Nachrichteninhalt semantisch nicht EBICS-konform"
+
+    def script(body: bytes) -> bytes:
+        return bank_response("Initialisation", signing_key=bank.authentication,
+                             return_code="091113", report_text=report)
+
+    with serving_bank(script) as url:
+        result = worker(engine, custody_settings, url).run_once()
+
+    assert result.state is OrderState.REJECTED
+    row = order_row(engine, order_id)
+    kept = row["refused_request"]
+    assert kept is not None, "the refused request was not kept"
+    # Verbatim: the bytes that went to the bank, not a rendering of them.
+    assert kept.startswith(b"<?xml")
+    assert b"ebicsRequest" in kept
+    # And checked, so the first question is answered without asking anybody.
+    # This one is well-formed EBICS, which is a finding rather than an
+    # exoneration -- it says the disagreement is semantic.
+    assert row["refused_request_errors"] == []
+
+
+def test_the_kept_request_carries_no_payment_file(prepared_bank,
+                                                  custody_settings):
+    """Why keeping it is safe. An upload's initialisation carries the
+    electronic signature and a transaction key wrapped to the *bank's* public
+    half; the `pain.001` goes in the transfer phase, which a refusal at
+    initialisation never reaches."""
+    engine, _, bank = prepared_bank
+    submit(engine)
+
+    def script(body: bytes) -> bytes:
+        return bank_response("Initialisation", signing_key=bank.authentication,
+                             return_code="091113", report_text="no")
+
+    with serving_bank(script) as url:
+        worker(engine, custody_settings, url).run_once()
+
+    kept = order_row(engine, list(_order_ids(engine))[0])["refused_request"]
+    assert b"CstmrCdtTrfInitn" not in kept
+    assert b"IBAN" not in kept
+
+
+def _order_ids(engine):
+    from sqlalchemy import select
+
+    from painfree.schema import payment_order
+    with engine.connect() as connection:
+        for row in connection.execute(select(payment_order.c.order_id)):
+            yield row[0]
+
+
 def test_a_refusal_is_recorded_in_the_audit_trail_with_the_bank_s_words(
+
         prepared_bank, custody_settings):
     engine, _, bank = prepared_bank
     order_id = submit(engine)

@@ -45,6 +45,28 @@
   <tr><td>{{ t('order.bank_order_id') }}</td><td>{{ order.bank_order_id or '—' }}</td></tr>
   <tr><td>{{ t('orders.return_code') }}</td><td>{% if order.return_code %}<code>{{ order.return_code }}</code>{% else %}—{% endif %}</td></tr>
   <tr><td>{{ t('orders.report_text') }}</td><td>{{ bank.words(order.report_text) }}</td></tr>
+  {# What the bank refused, kept and checked here. A code like `091113` names
+     no element, so without this an operator has nothing to look at and the
+     only party who can still see the document is the bank. #}
+  {% if order.refused_request %}
+  <tr><td>{{ t('orders.refused_request') }}</td><td>
+    {% if order.refused_request_errors %}
+      <span class="tag warn">{{ t('orders.refused_request_invalid') }}</span>
+      <ul class="plain">
+        {% for failure in order.refused_request_errors %}
+        <li><small class="mono">{{ failure }}</small></li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      {# A clean result is a finding, not an exoneration: it says the
+         disagreement is semantic rather than structural, which is what
+         points the conversation with the bank at content. #}
+      <span class="hint">{{ t('orders.refused_request_clean') }}</span>
+    {% endif %}
+    <p><a href="/ui/orders/{{ order.order_id }}/refused-request.xml">
+      {{ t('orders.refused_request_download') }}</a></p>
+  </td></tr>
+  {% endif %}
   <tr><td>{{ t('order.attempts') }}</td><td>{{ order.attempts | count }}</td></tr>
   <tr><td>{{ t('orders.accepted') }}</td><td>{{ order.accepted_at | moment }}</td></tr>
   <tr><td>{{ t('order.last_change') }}</td><td>{{ order.updated_at | moment }}</td></tr>

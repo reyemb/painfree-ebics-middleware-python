@@ -58,6 +58,7 @@ from typing import Any
 from sqlalchemy import Engine, and_, or_, select
 
 from painfree.attempts import LIVE, PLANNED, SUPERSEDED, Attempt, AttemptStore
+from painfree.ebics3 import envelope_schema
 from painfree.audit import FAILURE, SUCCESS, AuditLog
 from painfree.logging import bind, get_logger
 from painfree.orders import OrderState, PaymentOrder, from_row
@@ -257,17 +258,37 @@ class OrderQueue:
                             outcome_ok=True)
 
     def refused(self, order_id: str, *, return_code: str | None,
-                report_text: str | None, name: str | None = None) -> OrderState:
+                report_text: str | None, name: str | None = None,
+                request: bytes | None = None) -> OrderState:
         """The bank said no, and repeating it would not change the answer.
 
         The return code and the bank's own ``ReportText`` are stored verbatim.
         They are the two fields a support call is answered with, and folding
         them into a generic message is how that call becomes a day's work.
+
+        ``request`` is the EBICS document that was refused, kept for the same
+        reason: a code like `091113` names no element, and without the document
+        the only party who can still see it is the bank. It is checked against
+        the official H005 schemas here, once, and the verdict stored beside it
+        -- a clean result is a *finding* (the disagreement is semantic, not
+        structural) and not this service being exonerated.
         """
+        errors = None
+        if request is not None:
+            errors = envelope_schema.schema_failures(request)
+            log.info("ebics.refused_request_checked", order_id=order_id,
+                     return_code=return_code, bytes=len(request),
+                     schema_failures=len(errors),
+                     reason="the request the bank refused, kept and checked "
+                            "against the H005 schemas")
         return self._settle(order_id, OrderState.REJECTED, "payment.rejected",
                             return_code=return_code, report_text=report_text,
                             last_error=None, outcome_ok=False,
-                            detail={"return_code_name": name})
+                            refused_request=request,
+                            refused_request_errors=errors,
+                            detail={"return_code_name": name,
+                                    "request_schema_failures":
+                                        None if errors is None else len(errors)})
 
     def retry_later(self, order_id: str, *, attempts: int, reason: str,
                     return_code: str | None = None,

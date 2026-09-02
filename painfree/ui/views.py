@@ -37,7 +37,7 @@ import urllib.parse
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import PlainTextResponse, RedirectResponse
 
 import painfree
@@ -536,7 +536,37 @@ def orders(request: Request, connection_id: str = "", state: str = "",
         selected_connection=connection_id, selected_state=chosen)
 
 
+@router.get("/orders/{order_id}/refused-request.xml")
+def refused_request(request: Request, order_id: str,
+                    principal: Principal = Depends(
+                        requires(Scope.payments_read))):
+    """The EBICS request this bank refused, exactly as it went out.
+
+    Offered as a file because the next thing an operator does with it is put it
+    somewhere else: a validator, a support ticket, an email to the bank. The
+    console already says what the H005 schemas made of it; this is for the
+    questions the schemas cannot answer.
+
+    `payments:read` on the connection, like the order page it hangs off. It
+    carries the electronic signature and a transaction key wrapped to the
+    *bank's* public half -- no account data and nothing anybody else can open
+    -- so it is no more privileged than the order itself.
+    """
+    with bind(order_id=order_id):
+        row = _orders(request).get(order_id)
+        access.require(principal, row.connection_id, Scope.payments_read,
+                       what="order")
+        if row.refused_request is None:
+            raise NotFoundError(
+                f"no refused request was captured for order {order_id!r}")
+        return Response(
+            row.refused_request, media_type="application/xml",
+            headers={"Content-Disposition":
+                     f'attachment; filename="{order_id}-refused-request.xml"'})
+
+
 @router.get("/orders/{order_id}")
+
 def order(request: Request, order_id: str, replayed: int = 0,
           principal: Principal = Depends(requires(Scope.payments_read))):
     """One order, and the trail of what happened to it.

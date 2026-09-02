@@ -197,7 +197,6 @@
   /* --- layout ------------------------------------------------------------- */
   --pf-drawer-width: 264px;
   --pf-app-bar-height: 64px;
-  --pf-reading-width: 1120px;
 }
 
 /* The two explicit choices. `color-scheme` is the whole switch: every role

@@ -135,6 +135,13 @@ class PaymentOrder:
     accepted_at: _dt.datetime
     updated_at: _dt.datetime
     document: bytes
+    #: The EBICS request the bank refused, and what the H005 schemas said
+    #: about it. ``None`` means nothing was captured -- an order that was
+    #: never refused, or one refused before this was kept. An empty list of
+    #: errors is a finding, not an exoneration: see
+    #: :mod:`painfree.ebics3.envelope_schema`.
+    refused_request: bytes | None = None
+    refused_request_errors: list[str] | None = None
 
     @property
     def downgraded(self) -> bool:
@@ -729,6 +736,8 @@ def from_row(row: Any) -> PaymentOrder:
         scheme_reason=row["scheme_reason"],
         accepted_at=row["accepted_at"],
         updated_at=row["updated_at"], document=row["document"],
+        refused_request=row["refused_request"],
+        refused_request_errors=row["refused_request_errors"],
     )
 
 
