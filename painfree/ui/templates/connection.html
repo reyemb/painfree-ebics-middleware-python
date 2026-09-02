@@ -47,6 +47,7 @@
   {% if connection.initialised and may_on('payments:submit', connection.connection_id) %}
   <a class="button secondary" href="/ui/connections/{{ connection.connection_id }}/payment">{{ t('connection.test_payment') }}</a>
   {% endif %}
+  <a class="button secondary" href="/ui/connections/{{ connection.connection_id }}/catalogue">{{ t('connection.catalogue') }}</a>
   {% if may('connections:write') %}
   <a class="button secondary" href="/ui/connections/{{ connection.connection_id }}/edit">{{ t('connection.edit') }}</a>
 {% endif %}

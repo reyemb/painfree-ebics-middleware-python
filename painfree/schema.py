@@ -954,6 +954,40 @@ custody_acknowledgement = Table(
 )
 
 
+#: What the bank says about itself, as ``HAA``, ``HTD`` or ``HPD`` last
+#: answered it. One row per connection and order type, replaced on every fetch.
+#:
+#: **The document is kept, not just the parse.** What a bank publishes is the
+#: authority for whether a payment will be accepted, and a parse is this
+#: service's reading of it. Keeping the bytes means a disagreement between the
+#: two is answerable later, by a person, against what actually arrived --
+#: which is the whole reason for fetching this rather than reading a PDF.
+#:
+#: Nothing here is secret. It is the same information the bank publishes in its
+#: parameter sheet, addressed to a subscriber who already authenticated to ask.
+bank_catalogue = Table(
+    "bank_catalogue",
+    metadata,
+    Column("seq", Sequence64, primary_key=True, autoincrement=True),
+    Column("connection_id", String(64), nullable=False),
+    # `HAA`, `HTD` or `HPD`. Three characters by the protocol's own type.
+    Column("order_type", String(3), nullable=False),
+    Column("fetched_at", UtcDateTime, nullable=False),
+    # The bank's own words for what happened, kept beside the answer for the
+    # same reason every other exchange keeps them.
+    Column("return_code", String(6), nullable=True),
+    Column("report_text", String(1024), nullable=True),
+    # The decrypted order data, exactly as it arrived.
+    Column("document", LargeBinary, nullable=False),
+    # This service's reading of it: the catalogue rows, the accounts, the
+    # declared versions. Kept so a page can be drawn without re-parsing, and
+    # so a change in how it is read is visible against the document beside it.
+    Column("summary", JsonBlob, nullable=True),
+    UniqueConstraint("connection_id", "order_type",
+                     name="uq_bank_catalogue_connection_id_order_type"),
+)
+
+
 basic_lockout = Table(
     "basic_lockout",
     metadata,
@@ -977,6 +1011,7 @@ basic_lockout = Table(
 
 __all__ = [
     "JsonBlob",
+    "bank_catalogue",
     "Money",
     "NAMING_CONVENTION",
     "Sequence64",

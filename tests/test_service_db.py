@@ -33,7 +33,7 @@ TABLES = {"audit_log", "bank_connection", "key_material", "payment_order",
           "webhook_subscription", "webhook_delivery", "webhook_wrapping_key",
           "oidc_login", "user_session", "key_job", "connection_grant",
           "oversight_grant", "basic_account", "basic_lockout",
-          "custody_acknowledgement"}
+          "custody_acknowledgement", "bank_catalogue"}
 
 POSTGRES_URL = os.environ.get("POSTGRES_TEST_URL")
 requires_postgres = pytest.mark.skipif(

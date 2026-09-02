@@ -36,7 +36,8 @@ request id the JSON body would have. The API's error shape is untouched: the
 distinction is made on the ``Accept`` header and the path.
 """
 
-from painfree.ui import (access_views, account_views, payment_views,
+from painfree.ui import (access_views, account_views, catalogue_views,
+                         payment_views,
                          reference_views)
 from painfree.ui.rendering import render, wants_html
 from painfree.ui.views import router
@@ -46,8 +47,10 @@ from painfree.ui.views import router
 #: split is by what a page is *about* -- the work (`views`), the deployment
 #: itself (`reference_views`), who may reach it (`access_views`), who may
 #: sign in at all when there is no identity provider to ask (`account_views`),
-#: and the one payment a person raises by hand (`payment_views`).
+#: the one payment a person raises by hand (`payment_views`), and what the
+#: bank says it accepts (`catalogue_views`).
 ROUTERS = (router, reference_views.router, access_views.router,
-           account_views.router, payment_views.router)
+           account_views.router, payment_views.router,
+           catalogue_views.router)
 
 __all__ = ["ROUTERS", "render", "router", "wants_html"]

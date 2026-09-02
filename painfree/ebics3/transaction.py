@@ -58,7 +58,8 @@ from .canon import parse_xml
 from .errors import RequestError, TransactionError
 from .keys import EbicsKey
 from .pipeline import SecuredOrderData, open_order_data
-from .requests import (RequestContext, build_btd_request, build_btu_request,
+from .requests import (RequestContext, build_admin_download_request,
+                       build_btd_request, build_btu_request,
                        build_receipt_request, build_transfer_request)
 from .responses import BankResponse, parse_response
 from .signature import verify_auth_signature
@@ -294,8 +295,28 @@ class DownloadTransaction(_Transaction):
             bank_encryption_key=bank_encryption_key,
             schema_location=self.schema_location, **kwargs)
 
-    def resume_at(self, segment_number: int) -> None:
-        """As the base class, and drop the segments the bank never got out."""
+    def admin_initialisation_request(self, admin_order_type: str, *,
+                                     bank_authentication_key: EbicsKey,
+                                     bank_encryption_key: EbicsKey,
+                                     **kwargs) -> etree._Element:
+        """The same download, opened for an administrative order type.
+
+        ``HTD``, ``HPD`` and ``HAA`` are ordinary three-phase downloads --
+        segmented, encrypted to our own ``E002`` half, acknowledged with a
+        receipt -- and differ from a ``BTD`` in one element: they carry no BTF,
+        because they describe no business traffic. Only the opening request
+        changes, so only the opening request is overridden here; the transfer
+        and the receipt below are already right for both.
+        """
+        return build_admin_download_request(
+            self.context, admin_order_type,
+            authentication_key=self.authentication_key,
+            bank_authentication_key=bank_authentication_key,
+            bank_encryption_key=bank_encryption_key,
+            schema_location=self.schema_location, **kwargs)
+
+    def resume_at(self, segment_number: int) -> None:
+        """As the base class, and drop the segments the bank never got out."""
         super().resume_at(segment_number)
         del self.segments[segment_number:]
 

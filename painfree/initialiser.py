@@ -31,7 +31,9 @@ from sqlalchemy import Engine
 from painfree import custody, ebics3
 from painfree.audit import Actor, AuditLog
 from painfree.config import Settings
+from painfree.catalogue import Catalogue
 from painfree.connections import BankConnection, ConnectionRegistry
+from painfree.errors import ConflictError
 from painfree.keyjobs import JobState, KeyAction, KeyJob, KeyJobQueue
 from painfree.keyring import KeyCustodian, Keyring
 from painfree.keyjobs import ALLOWED_FROM
@@ -52,7 +54,7 @@ class KeyWorker:
     """Claims key jobs and performs them. Built once per worker process."""
 
     __slots__ = ("_engine", "_queue", "_registry", "_keyring", "_custodian",
-                 "_worker_id", "_timeout", "_user_agent")
+                 "_worker_id", "_timeout", "_user_agent", "_catalogue")
 
     def __init__(self, engine: Engine, custody_key: CustodyKey, *,
                  audit: AuditLog | None = None, worker_id: str | None = None,
@@ -63,6 +65,7 @@ class KeyWorker:
         self._queue = KeyJobQueue(engine, audit)
         self._registry = ConnectionRegistry(engine, audit)
         self._keyring = Keyring(engine)
+        self._catalogue = Catalogue(engine)
         # Refuses to exist on a request-handling path, so a console that grew a
         # shortcut into this class fails at construction rather than at the
         # first decryption.
@@ -207,7 +210,122 @@ class KeyWorker:
                 "return_code": parsed.header_return_code,
                 "report_text": parsed.report_text}
 
+    def _fetch_catalogue(self, job: KeyJob,
+                         connection: BankConnection) -> dict[str, Any]:
+        """Ask the bank what it publishes, and store the answer verbatim.
+
+        An ordinary three-phase download -- the same one a statement takes --
+        opened with an administrative order type instead of a BTF. It is here
+        rather than in :mod:`painfree.downloader` because it is a thing an
+        operator asks for and watches, not a thing a schedule does; and it is a
+        key job rather than a console action because the response is encrypted
+        to our own ``E002`` half, which the API process cannot open.
+
+        Nothing fetched here is trusted for anything. It is written to
+        :mod:`painfree.catalogue` and read by a page. A bank that publishes an
+        upload this service is not configured for does not thereby become
+        configured for it -- the comparison is shown to a person, who decides.
+        """
+        order_type = str(job.params.get("order_type") or "HTD").upper()
+        if order_type not in ebics3.ADMIN_DOWNLOADS:
+            raise ConflictError(
+                f"{order_type!r} is not a catalogue this service fetches; it "
+                f"knows {', '.join(sorted(ebics3.ADMIN_DOWNLOADS))}")
+
+        authentication = self._custodian.open(connection.connection_id,
+                                              ebics3.KeyVersion.X002)
+        encryption = self._custodian.open(connection.connection_id,
+                                          ebics3.KeyVersion.E002)
+        bank = self._keyring.bank_keys(connection.connection_id)
+        transaction = ebics3.DownloadTransaction(
+            context=connection.context, authentication_key=authentication,
+            encryption_key=encryption,
+            bank_authentication_key=bank.authentication)
+        transport = self._transport(connection)
+
+        request = transaction.admin_initialisation_request(
+            order_type, bank_authentication_key=bank.authentication,
+            bank_encryption_key=bank.encryption)
+        exchanges = 1
+        parsed = self._download_exchange(transaction, request, transport,
+                                         order_type, exchanges)
+        while transaction.phase is ebics3.Phase.TRANSFER:
+            following = transaction.next_request()
+            if following is None:  # pragma: no cover - the engine's job
+                break
+            exchanges += 1
+            parsed = self._download_exchange(transaction, following, transport,
+                                             order_type, exchanges)
+
+        if not transaction.segments:
+            # A bank with nothing to say here is a bank that answered. It is
+            # not an error and it is not a catalogue, so nothing is stored --
+            # storing an empty one would read as *this bank offers nothing*.
+            return {"result": {"order_type": order_type, "stored": False,
+                               "reason": "the bank returned no order data"},
+                    "return_code": parsed.header_return_code,
+                    "report_text": parsed.report_text}
+
+        document = transaction.order_data
+        entry = self._catalogue.record(
+            connection.connection_id, order_type, document=document,
+            return_code=parsed.header_return_code,
+            report_text=parsed.report_text)
+
+        acknowledged = False
+        if transaction.phase is ebics3.Phase.RECEIPT:
+            exchanges += 1
+            # After the row is written, for the same reason a statement
+            # acknowledges after ingest: the two orderings differ by whether a
+            # crash loses what the bank believes it delivered.
+            parsed = self._download_exchange(
+                transaction, transaction.next_request(), transport,
+                order_type, exchanges)
+            acknowledged = transaction.phase is ebics3.Phase.DONE
+
+        return {"result": {"order_type": order_type, "stored": True,
+                           "readable": entry.summary is not None,
+                           "bytes": len(document),
+                           "acknowledged": acknowledged,
+                           "exchanges": exchanges},
+                "return_code": parsed.header_return_code,
+                "report_text": parsed.report_text}
+
+    def _download_exchange(self, transaction, request, transport,
+                           order_type: str, exchange: int):
+        """One request, one response, one log line -- in that order.
+
+        Parsed and logged before it is fed to the engine, because feeding it is
+        what raises on a refusal, and the exchange an operator most needs to
+        read is the one that failed.
+        """
+        body = ebics3.serialize_request(request)
+        raw = transport.post(body)
+        root = ebics3.parse_xml(raw)
+        parsed = ebics3.parse_response(root)
+        code = parsed.status.decisive
+        log.info("ebics.exchange", order_type=order_type,
+                 phase=parsed.transaction_phase or transaction.phase.value,
+                 segment_number=parsed.segment_number,
+                 num_segments=parsed.num_segments or transaction.num_segments,
+                 transaction_id=parsed.transaction_id,
+                 header_return_code=parsed.header_return_code,
+                 body_return_code=parsed.body_return_code,
+                 return_code_name=code.name if code else None,
+                 report_text=parsed.report_text,
+                 request_bytes=len(body), exchange=exchange)
+        transaction.feed(root)
+        return parsed
+
+    def _transport(self, connection: BankConnection) -> BankTransport:
+        if self._timeout is None:
+            return BankTransport(connection.host_url,
+                                 user_agent=self._user_agent)
+        return BankTransport(connection.host_url, timeout=self._timeout,
+                             user_agent=self._user_agent)
+
     def _confirm_bank_keys(self, job: KeyJob,
+
                            connection: BankConnection) -> dict[str, Any]:
         """Compare the staged keys against what the operator read off the letter."""
         updated = self._custodian.confirm_bank_keys(
@@ -299,6 +417,7 @@ _ACTIONS: dict[KeyAction, Callable[..., dict[str, Any]]] = {
     KeyAction.send_ini: KeyWorker._send_ini,
     KeyAction.send_hia: KeyWorker._send_hia,
     KeyAction.fetch_hpb: KeyWorker._fetch_hpb,
+    KeyAction.fetch_catalogue: KeyWorker._fetch_catalogue,
     KeyAction.confirm_bank_keys: KeyWorker._confirm_bank_keys,
     KeyAction.decline_bank_keys: KeyWorker._decline_bank_keys,
     KeyAction.renew_key: KeyWorker._renew_key,

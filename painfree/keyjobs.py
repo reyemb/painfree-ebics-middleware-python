@@ -78,7 +78,18 @@ class KeyAction(str, enum.Enum):
     fetch_hpb = "fetch_hpb"
     """Ask the bank for its keys. They are **staged**, not trusted -- see below."""
 
+    fetch_catalogue = "fetch_catalogue"
+    """Ask the bank what it publishes: ``HAA``, ``HTD`` or ``HPD``.
+
+    Named in ``params["order_type"]``. It is a key job for the same reason
+    ``fetch_hpb`` is -- the answer arrives encrypted to our own ``E002`` half,
+    which only the worker can open -- and not because it is dangerous. Nothing
+    it fetches is secret, nothing it writes is trusted for anything, and it can
+    be asked for as often as somebody likes.
+    """
+
     confirm_bank_keys = "confirm_bank_keys"
+
     """Compare the staged keys against the fingerprints on the bank's letter.
 
     The whole trust decision: the H005 key-management response carries no
@@ -131,7 +142,15 @@ ALLOWED_FROM: dict[KeyAction, tuple[ebics3.KeyState, ...]] = {
     KeyAction.fetch_hpb: (ebics3.KeyState.KEYS_SENT,
                           ebics3.KeyState.BANK_KEYS_RECEIVED,
                           ebics3.KeyState.READY),
+    # A catalogue can be asked for from the moment the bank will answer a
+    # signed request at all, which is once both registrations are behind us.
+    # It is offered from `ready` too, and repeatedly: a bank changing what it
+    # accepts is exactly the event this exists to notice.
+    KeyAction.fetch_catalogue: (ebics3.KeyState.KEYS_SENT,
+                                ebics3.KeyState.BANK_KEYS_RECEIVED,
+                                ebics3.KeyState.READY),
     KeyAction.confirm_bank_keys: (ebics3.KeyState.BANK_KEYS_RECEIVED,
+
                                   ebics3.KeyState.READY),
     KeyAction.decline_bank_keys: (ebics3.KeyState.BANK_KEYS_RECEIVED,
                                   ebics3.KeyState.READY),

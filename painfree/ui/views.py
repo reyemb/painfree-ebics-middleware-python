@@ -381,7 +381,13 @@ def _job_params(action: KeyAction, form: dict[str, str]) -> dict[str, Any]:
     the bank sent: a confirmation whose value the console supplied confirms
     nothing. They are compared, in the worker, by the engine.
     """
+    if action is KeyAction.fetch_catalogue:
+        # Which of the three to ask for. Defaulted to `HTD` because that is the
+        # one carrying the order catalogue -- the answer to "will this payment
+        # be accepted" -- and the other two are read after it, not before.
+        return {"order_type": (form.get("order_type") or "HTD").strip().upper()}
     if action is KeyAction.confirm_bank_keys:
+
         return {"authentication": _required(form, "authentication",
                                             "the authentication fingerprint"),
                 "encryption": _required(form, "encryption",

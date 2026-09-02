@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}{{ t('catalogue.title') }} — painfree{% endblock %}
+{% block body %}
+<h1>{{ t('catalogue.heading') }}</h1>
+<p class="lede">{{ t('catalogue.lede') }}</p>
+
+{# The comparison this page exists for. `published` is deliberately three-valued:
+   true, false, and "the bank has not been asked" -- which must not be drawn as
+   a refusal, because nothing has refused anything yet. #}
+<h2>{{ t('catalogue.what_this_sends') }}</h2>
+<div class="card">
+<table class="rows">
+  <tr><th>{{ t('catalogue.scheme') }}</th><th>{{ t('catalogue.btf') }}</th>
+      <th>{{ t('catalogue.published') }}</th></tr>
+  {% for row in comparison %}
+  <tr>
+    <td><code>{{ row.scheme }}</code></td>
+    <td><code>{{ row.service.name }}{% if row.service.option %}+{{ row.service.option }}{% endif %}/{{ row.service.scope }}
+        &rarr; {{ row.service.msg_name }}</code></td>
+    <td>{% if row.published is none %}<span class="hint">{{ t('catalogue.not_asked') }}</span>
+        {% elif row.published %}<span class="tag operator">{{ t('catalogue.accepted') }}</span>
+        {% else %}<span class="tag warn">{{ t('catalogue.not_published') }}</span>
+        <span class="hint">{{ t('catalogue.not_published_why') }}</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table>
+</div>
+
+{% for order_type in order_types %}
+{% set entry = stored.get(order_type) %}
+<h2>{{ order_type }} <span class="hint">{{ descriptions[order_type] }}</span></h2>
+<div class="card">
+  {% if may('connections:write') %}
+  <form method="post" action="/ui/connections/{{ connection.connection_id }}/keys/fetch_catalogue">
+    <input type="hidden" name="order_type" value="{{ order_type }}">
+    <div class="actions">
+      <button type="submit">{{ t('catalogue.fetch') if not entry else t('catalogue.refetch') }}</button>
+      {% if entry %}<span class="hint">{{ t('catalogue.fetched') }} {{ entry.fetched_at | moment }}</span>{% endif %}
+    </div>
+  </form>
+  {% elif entry %}
+  <p class="hint">{{ t('catalogue.fetched') }} {{ entry.fetched_at | moment }}</p>
+  {% endif %}
+
+  {% if not entry %}
+    <p class="empty">{{ t('catalogue.never_fetched') }}</p>
+  {% elif entry.summary is none %}
+    {# The document is kept even when the parse failed, which is exactly the
+       case where having the bytes matters. #}
+    <p class="empty">{{ t('catalogue.unreadable') }}</p>
+  {% elif order_type == 'HTD' %}
+    <table class="rows">
+      <tr><th>{{ t('catalogue.subscriber') }}</th>
+          <td>{{ entry.summary.name or '—' }}
+            <code>{{ entry.summary.partner_id or '' }} / {{ entry.summary.user_id or '' }}</code></td></tr>
+    </table>
+    <h3>{{ t('catalogue.uploads') }}</h3>
+    {% if entry.uploads %}
+    <table class="rows">
+      <tr><th>{{ t('catalogue.btf') }}</th><th>{{ t('catalogue.description') }}</th>
+          <th>{{ t('catalogue.signatures') }}</th></tr>
+      {% for row in entry.uploads %}
+      <tr><td><code>{{ row.service.name }}{% if row.service.option %}+{{ row.service.option }}{% endif %}/{{ row.service.scope }}
+              &rarr; {{ row.service.msg_name }}.{{ row.service.msg_version }}</code></td>
+          <td>{{ row.description or '—' }}</td>
+          <td>{{ row.num_sig_required if row.num_sig_required is not none else '—' }}</td></tr>
+      {% endfor %}
+    </table>
+    {% else %}<p class="empty">{{ t('catalogue.no_uploads') }}</p>{% endif %}
+
+    <h3>{{ t('catalogue.downloads') }}</h3>
+    <table class="rows">
+      {% for row in entry.downloads %}
+      <tr><td><code>{{ row.service.name }}/{{ row.service.scope }}
+              &rarr; {{ row.service.msg_name }}.{{ row.service.msg_version }}</code></td>
+          <td>{{ row.description or '—' }}</td></tr>
+      {% endfor %}
+    </table>
+
+    {% if entry.summary.accounts %}
+    <h3>{{ t('catalogue.accounts') }}</h3>
+    <table class="rows">
+      {% for account in entry.summary.accounts %}
+      <tr><td><code>{{ account.iban or account.account_id }}</code></td>
+          <td>{{ account.description or '—' }} {{ account.currency or '' }}</td></tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+
+  {% elif order_type == 'HAA' %}
+    {% if entry.summary.services %}
+    <table class="rows">
+      {% for service in entry.summary.services %}
+      <tr><td><code>{{ service.name }}/{{ service.scope }}
+              &rarr; {{ service.msg_name }}.{{ service.msg_version }}</code></td></tr>
+      {% endfor %}
+    </table>
+    {% else %}<p class="empty">{{ t('catalogue.nothing_waiting') }}</p>{% endif %}
+
+  {% else %}
+    <table class="rows">
+      <tr><th>HostID</th><td><code>{{ entry.summary.host_id or '—' }}</code></td></tr>
+      <tr><th>{{ t('catalogue.protocol') }}</th><td><code>{{ entry.summary.protocol_versions | join(', ') or '—' }}</code></td></tr>
+      <tr><th>{{ t('catalogue.authentication') }}</th><td><code>{{ entry.summary.authentication_versions | join(', ') or '—' }}</code></td></tr>
+      <tr><th>{{ t('catalogue.encryption') }}</th><td><code>{{ entry.summary.encryption_versions | join(', ') or '—' }}</code></td></tr>
+      <tr><th>{{ t('catalogue.signature') }}</th><td><code>{{ entry.summary.signature_versions | join(', ') or '—' }}</code></td></tr>
+      <tr><th>{{ t('catalogue.recovery') }}</th>
+          <td>{{ t('common.yes') if entry.summary.recovery_supported else (t('catalogue.not_stated') if entry.summary.recovery_supported is none else t('common.no')) }}</td></tr>
+    </table>
+  {% endif %}
+</div>
+{% endfor %}
+{% endblock %}

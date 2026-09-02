@@ -102,6 +102,7 @@ from painfree.keyjobs import KeyJobStore
 from painfree.recovery import CustodyRecovery
 from painfree.keyring import Keyring
 from painfree.logging import bind, configure_logging, context, get_logger
+from painfree.catalogue import Catalogue
 from painfree.orders import OrderStore
 from painfree.schedule import DownloadSchedules
 from painfree.statements import StatementStore
@@ -152,6 +153,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # The submission path. It validates, builds a `pain.001` and records an
     # order; it neither signs nor uploads, and needs no key to do any of it.
     app.state.orders = OrderStore(engine, app.state.audit, app.state.connections)
+    # What the bank last published about itself. Read by the console, written
+    # only by the worker, which is the half that can open the response.
+    app.state.catalogue = Catalogue(engine)
     app.state.statements = StatementStore(engine, app.state.audit)
     # What the console asks the worker for. It appends rows and reads them back;
     # it holds no key and performs no key operation.
