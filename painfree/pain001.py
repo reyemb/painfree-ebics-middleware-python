@@ -50,6 +50,11 @@ PAYMENT_METHOD = "TRF"
 #: What ISO 20022 wants when the caller has no end-to-end reference of its own.
 NOT_PROVIDED = "NOTPROVIDED"
 
+#: The `SvcLvl` external code that says a payment follows the SEPA schemes.
+#: Not a Swiss value: SPS uses `SvcLvl/Prtry` or nothing at all.
+SEPA_SERVICE_LEVEL = "SEPA"
+
+
 #: `Max35Text`, and 34 characters of it: `PF` plus a UUID's hex. Unique per
 #: message because the bank's duplicate detection keys on it, and opaque
 #: because a `MsgId` that encodes something is a `MsgId` someone parses.
@@ -98,6 +103,24 @@ def _party(parent: etree._Element, tag: str, party: payments.Party) -> etree._El
     if party.postal_address:
         _postal_address(node, party.postal_address)
     return node
+
+
+def declares_sepa(profile) -> bool:
+    """Does this profile announce the payment as SEPA?
+
+    ``SvcLvl/Cd`` of ``SEPA`` is the declaration itself, so it is what decides
+    whether the rest of the document follows SEPA conventions. A proprietary
+    service level is by definition not the SEPA external code, and a profile
+    with none is not claiming SEPA either -- both answer ``False``.
+
+    ``None`` for a message built with no profile at all: that is the shape a
+    connection with no scheme configuration produces, and it is Swiss by
+    default in this service.
+    """
+    level = getattr(profile, "service_level", None)
+    if level is None:
+        return False
+    return not level.proprietary and level.value == SEPA_SERVICE_LEVEL
 
 
 def _agent(parent: etree._Element, tag: str, bic: str) -> None:
@@ -232,19 +255,26 @@ def build(
     _party(payment, "Dbtr", instruction.debtor)
     _account(payment, "DbtrAcct", instruction.debtor_iban)
     # `DbtrAgt` is mandatory in `PmtInf` and every child of `FinInstnId` is
-    # optional, so when no BIC was given the honest document is an empty
-    # `FinInstnId`: the debit IBAN already identifies the institution.
+    # optional, so with no BIC there are two defensible documents and the
+    # scheme decides which.
     #
-    # This used to write `Othr/Id` of `NOTPROVIDED`, which is the **EPC SEPA**
-    # convention for "no BIC available" and is not a Swiss one. A Swiss
-    # validator refuses it -- *"Das Element 'Othr' soll in diesem Kontext nicht
-    # verwendet werden"* -- and it refuses it after the file has been signed and
-    # uploaded, which is the expensive place to find out. Schema-valid and
-    # accepted are different questions, and the XSD cannot answer the second.
+    # **Under SEPA**, `Othr/Id` of `NOTPROVIDED` is the EPC convention for
+    # "IBAN only, no BIC", and receiving banks expect it. **Under the Swiss
+    # standards it is refused** -- *"Das Element 'Othr' soll in diesem Kontext
+    # nicht verwendet werden"* -- and refused after the file is signed and
+    # uploaded, which is the expensive place to find out.
+    #
+    # So the same field that tells the bank which scheme this is decides which
+    # convention to follow: `SvcLvl/Cd` of `SEPA`. Reading the declaration
+    # rather than guessing from a currency or an IBAN country means the
+    # document cannot claim one scheme and be built for the other -- and a
+    # deployment sending real SEPA keeps the element it needs.
     debtor_agent = _element(payment, "DbtrAgt")
     financial = _element(debtor_agent, "FinInstnId")
     if instruction.debtor_bic:
         _text(financial, "BICFI", instruction.debtor_bic)
+    elif declares_sepa(payment_type):
+        _text(_element(financial, "Othr"), "Id", NOT_PROVIDED)
 
     for transaction in instruction.transactions:
         _transaction(payment, transaction,
@@ -345,6 +375,7 @@ def element_paths(document: bytes) -> Iterable[str]:
 
 
 __all__ = ["MESSAGE_TYPE", "MESSAGE_ID_PREFIX", "NAMESPACE", "NOT_PROVIDED",
+           "SEPA_SERVICE_LEVEL", "declares_sepa",
            "PAYMENT_METHOD", "SCHEMA_PATH", "build", "element_paths",
            "format_amount", "new_message_id", "schema", "schema_failures",
            "validate_document"]

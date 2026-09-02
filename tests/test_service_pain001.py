@@ -16,7 +16,7 @@ from lxml import etree
 
 from conftest import (QRR_REFERENCE, payment_body, scor_transfer,
                       transfer)
-from painfree import pain001, payments
+from painfree import pain001, payments, schemes
 
 CREATED_AT = _dt.datetime(2026, 8, 29, 20, 15, 0, tzinfo=_dt.timezone.utc)
 MESSAGE_ID = "PFTEST0000000000000000000000000001"
@@ -161,10 +161,47 @@ def test_a_debtor_agent_with_no_bic_is_empty_rather_than_NOTPROVIDED():
         f"{[etree.QName(child).localname for child in agent]}")
 
 
-def test_no_financial_institution_is_identified_by_a_generic_other():
-    """The whole family, not just the debtor's. `Othr` under a `FinInstnId` is
-    the pattern the bank refused; `Othr` under `CtctDtls` is a different
-    element and is how Swiss banks want the software named, so it stays."""
+def test_under_sepa_the_no_bic_convention_is_still_written():
+    """The other half of the rule, and the reason it is a rule rather than a
+    deletion.
+
+    `Othr/Id` of `NOTPROVIDED` is what the EPC expects for an IBAN-only SEPA
+    credit transfer, and a receiving bank in the euro area looks for it. What
+    was wrong was applying it to a Swiss payment, not the convention itself --
+    so the fix is a condition, and this is the branch a Swiss-only test would
+    have silently deleted.
+    """
+    body = payment_body()
+    body.pop("debtor_bic")
+    document = build(body, payment_type=schemes.SchemeProfile(
+        service_name="SCT", scope=None, service_level=schemes.Code("SEPA")))
+
+    assert pain001.schema_failures(document) == []
+    assert find(document, "CstmrCdtTrfInitn/PmtInf/DbtrAgt/FinInstnId/Othr/"
+                          "Id") == [pain001.NOT_PROVIDED]
+
+
+def test_the_declaration_and_the_convention_cannot_disagree():
+    """`SvcLvl/Cd` of `SEPA` is what tells the bank which scheme this is, so it
+    is what decides the conventions the rest of the document follows. Reading
+    the declaration rather than guessing from a currency or an IBAN country is
+    what stops a file claiming one scheme and being built for the other."""
+    sepa = schemes.SchemeProfile(service_name="SCT", scope=None,
+                                 service_level=schemes.Code("SEPA"))
+    assert pain001.declares_sepa(sepa) is True
+    # A proprietary code is by definition not the SEPA external code, even
+    # spelled the same way -- `SvcLvl/Prtry` is a different element.
+    assert pain001.declares_sepa(schemes.SchemeProfile(
+        service_level=schemes.Code("SEPA", proprietary=True))) is False
+    assert pain001.declares_sepa(schemes.DEFAULT_NORMAL) is False
+    # No profile at all is the shape an unconfigured connection produces.
+    assert pain001.declares_sepa(None) is False
+
+
+def test_a_swiss_payment_identifies_no_agent_by_a_generic_other():
+    """The refusal this came from, checked across every `FinInstnId` rather
+    than the debtor's alone. `Othr` under `CtctDtls` is a different element and
+    is how Swiss banks want the software named, so it stays."""
     document = build(payment_body(), software_version="0.3.1")
     tree = parse(document)
 
@@ -173,7 +210,6 @@ def test_no_financial_institution_is_identified_by_a_generic_other():
         assert "Othr" not in children, (
             f"a FinInstnId carries Othr ({children}), which a Swiss validator "
             "refuses")
-    # And the software identification is untouched by that rule.
     assert find(document, "CstmrCdtTrfInitn/GrpHdr/InitgPty/CtctDtls/Othr/"
                           "Id") == ["painfree", "0.3.1"]
 
