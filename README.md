@@ -22,7 +22,16 @@ EBICS initialisation, key management, order history, replay, audit.
 
 ## Status
 
-**Early.** Not in production. Not suitable for anyone else's money.
+**Early, and running.** One production deployment, against one bank: a payment
+this service built has been accepted from a real account.
+
+Still not suitable for anyone else's money. This is our own infrastructure
+talking to our own accounts, and the week it first ran against a bank found five
+defects no local test could have caught — a missing `SignatureFlag`, an empty
+`FinInstnId`, line breaks in the signed document, a stale catalogue that took
+the payment page down after an upgrade, and a refusal the console displayed as
+`OK`. The schema says whether a message is well formed. Only a bank says whether
+it is acceptable.
 
 ## Run it
 
