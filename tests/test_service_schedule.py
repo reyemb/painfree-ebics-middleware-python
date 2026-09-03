@@ -386,3 +386,38 @@ def test_the_transaction_id_is_recorded_as_soon_as_the_bank_assigns_it(schedules
             select(download_run).where(
                 download_run.c.run_id == claimed.run_id)).mappings().one()
     assert row["transaction_id"] == "A1B2C3"
+
+
+# --- writing a schedule as a time, not a rate --------------------------------
+
+def test_a_cron_expression_decides_the_next_run(schedules):
+    """`0 8 * * *` is what a cadence cannot say, and the row is still the state.
+
+    The expression is consulted once, when a finished run computes the next
+    `due_at`. Nothing holds it in memory, so a restart still finds one overdue
+    schedule rather than every run it slept through -- the property this
+    module's whole design rests on, and the reason a cron *daemon* was refused
+    while a cron *expression* is not.
+    """
+    _, store = schedules
+    schedule = register(store, cron="0 8 * * *")
+    assert schedule.cron == "0 8 * * *"
+    assert store.get(schedule.schedule_id).cron == "0 8 * * *"
+
+
+def test_a_refused_expression_never_reaches_the_row(schedules):
+    """Validated on the way in, so the scheduler can only ever read one it can
+    evaluate -- and so the API and the console cannot disagree about what runs."""
+    from painfree.cron import CronError
+
+    _, store = schedules
+    with pytest.raises(CronError, match="uses a name"):
+        register(store, cron="0 8 * * MON")
+
+
+def test_an_empty_expression_means_the_cadence_decides(schedules):
+    """The ordinary case, and what every row written before this meant."""
+    _, store = schedules
+    for index, empty in enumerate((None, "", "   ")):
+        schedule = register(store, cron=empty, msg_version=f"0{index}")
+        assert schedule.cron is None

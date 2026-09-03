@@ -751,3 +751,59 @@ def test_an_edit_revalidates_the_btf_against_the_merged_row(console):
 
     with pytest.raises(RequestError):
         DownloadSchedules(engine).update(sid, service_name="EOPX")
+
+
+def test_the_form_offers_what_the_bank_published(console):
+    """The six BTF fields were free text beside a table of what is "common in
+    Switzerland". painfree already had the real answer: `HTD` lists every `BTD`
+    row this subscriber may fetch, parsed and stored per connection.
+
+    Retyping it is how a `container` ends up empty when the bank published
+    `ZIP` -- and that is `091113` hours later rather than a message at the form.
+    """
+    from painfree.catalogue import Catalogue
+    from tests.test_service_catalogue import HTD
+
+    client, engine = console[0], console[1]
+    Catalogue(engine).record(BANK_CONNECTION_ID, "HTD", document=HTD)
+
+    page = client.get("/ui/schedules/new", headers=_admin()).text
+
+    assert 'name="published_btf"' in page, "the bank's own list is offered"
+    # The whole triplet rides in the value, because a select submits one string
+    # -- which is also what makes this work with no script.
+    assert f"{BANK_CONNECTION_ID}|" in page
+    # And the generic table is gone once the bank has spoken for itself.
+    assert "schedule_new.btf_heading" not in page
+
+
+def test_choosing_a_published_download_fills_every_field(console):
+    """One choice, and the connection comes with it."""
+    from painfree.catalogue import Catalogue
+    from tests.test_service_catalogue import HTD
+
+    client, engine = console[0], console[1]
+    Catalogue(engine).record(BANK_CONNECTION_ID, "HTD", document=HTD)
+
+    created = client.post(
+        "/ui/schedules",
+        data={"published_btf": f"{BANK_CONNECTION_ID}|EOP|CH|camt.053|08|ZIP|",
+              "cadence": "6", "cadence_unit": "hours"},
+        headers=_admin(), follow_redirects=False)
+
+    assert created.status_code == 303, created.text[:300]
+    stored = DownloadSchedules(engine).all()[-1]
+    assert (stored.service_name, stored.msg_name, stored.msg_version,
+            stored.scope, stored.container) == ("EOP", "camt.053", "08",
+                                                "CH", "ZIP")
+    assert stored.connection_id == BANK_CONNECTION_ID
+
+
+def test_a_forged_selection_is_refused_rather_than_guessed(console):
+    """The value is a form field, so it is a value the caller writes."""
+    client = console[0]
+    refused = client.post("/ui/schedules",
+                          data={"published_btf": "nonsense", "cadence": "6",
+                                "cadence_unit": "hours"},
+                          headers=_admin())
+    assert refused.status_code >= 400

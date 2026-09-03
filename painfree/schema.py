@@ -450,6 +450,11 @@ download_schedule = Table(
     # How often, and whether at all. `enabled` is how an operator stops one
     # schedule without losing its window.
     Column("cadence_seconds", Integer, nullable=False),
+    # A five-field cron expression, when this schedule runs at a *time* rather
+    # than at a rate. NULL is the ordinary case and means the cadence decides.
+    # `cadence_seconds` stays non-null either way: it still caps how often a
+    # failed run is retried, which a cron says nothing about.
+    Column("cron", String(120), nullable=True),
     Column("enabled", Boolean, nullable=False, server_default="1"),
     # `window_days`, when set, is how far back a `DateRange` reaches. Left
     # NULL no `DateRange` is sent at all and the bank serves what it has

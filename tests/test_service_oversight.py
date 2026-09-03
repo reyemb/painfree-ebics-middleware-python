@@ -626,7 +626,7 @@ def test_the_migration_promotes_nobody(sqlite_url):
     from painfree.config import load_settings
 
     engine = db.build_engine(load_settings(database_url=sqlite_url))
-    assert db.migrate(engine) == "0019_request_eds"
+    assert db.migrate(engine) == "0020_schedule_cron"
     with engine.connect() as connection:
         assert connection.execute(select(oversight_grant)).all() == []
     engine.dispose()

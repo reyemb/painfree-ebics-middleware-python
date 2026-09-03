@@ -4,9 +4,12 @@
 <h1>{{ t('schedule_new.heading') }}</h1>
 <p class="lede">{{ t('schedule_new.lede') }}</p>
 
-<div class="card warn">
-  <h2>{{ t('schedule_new.btf_heading') }}</h2>
-  <p>{{ t('schedule_new.btf_body') }}</p>
+{# The bank's own list beats a table of what is usually true, so the generic
+   one is a fallback and folded away: it is reference, not instruction. #}
+{% if not published %}
+<details class="card warn">
+  <summary><strong>{{ t('schedule_new.btf_heading') }}</strong></summary>
+<p>{{ t('schedule_new.btf_body') }}</p>
   {# The table is the bank's own vocabulary: `EOP`, `camt.053`, `ZIP`. The
      column headings are translated; not one cell is. #}
   <table>
@@ -22,6 +25,8 @@
     {% endfor %}
   </table>
 </div>
+</details>
+{% endif %}
 
 <form class="stack" method="post" action="/ui/schedules">
   <label for="connection_id">{{ t('common.connection') }}
@@ -38,8 +43,28 @@
   <input type="text" id="description" name="description"
          value="{{ values.description | default('') }}" placeholder="Daily statements, main account">
 
-  <label for="service_name">BTF
-    <span class="hint">{{ t('schedule_new.btf_fields_hint') }}</span></label>
+  {% if published %}
+  {# What the banks themselves publish, from the stored `HTD`. Choosing one
+     fills every BTF field and the connection with it, so nobody retypes a
+     `container` the bank already named -- the mistake that is `091113` hours
+     later rather than a message here. The value carries the whole triplet
+     because a `select` can only submit one string, and that is also what lets
+     this work with no script. #}
+  <label for="published_btf">{{ t('schedule_new.published') }}
+    <span class="hint">{{ t('schedule_new.published_hint') }}</span></label>
+  <select id="published_btf" name="published_btf">
+    <option value="">{{ t('schedule_new.published_none') }}</option>
+    {% for row in published %}
+    <option value="{{ row.connection_id }}|{{ row.service_name }}|{{ row.scope }}|{{ row.msg_name }}|{{ row.msg_version }}|{{ row.container }}|{{ row.service_option }}">
+      {{ row.connection_id }} · {{ row.description or row.msg_name }} —
+      {{ row.service_name }}/{{ row.msg_name }} v{{ row.msg_version }}{% if row.container %} ({{ row.container }}){% endif %}
+    </option>
+    {% endfor %}
+  </select>
+  {% endif %}
+
+  <details class="pf-escape"{% if not published %} open{% endif %}>
+    <summary>BTF — {{ t('schedule_new.btf_fields_hint') }}</summary>
   <div class="filters">
     <div><label for="service_name">ServiceName</label>
       <input type="text" id="service_name" name="service_name" required class="mono"
@@ -63,6 +88,7 @@
       <input type="text" id="container" name="container" class="mono"
              maxlength="3" value="{{ values.container | default('ZIP') }}"></div>
   </div>
+  </details>
 
   <label for="cadence">{{ t('schedules.cadence') }}
     <span class="hint">{{ t('schedule_new.cadence_hint') }}</span></label>
@@ -74,6 +100,16 @@
       <option value="days">{{ t('schedule_new.days') }}</option>
     </select></div>
   </div>
+
+  {# A rate or a time, and the expression wins when both are filled -- the same
+     rule as the payment form's typed IBAN, for the same reason: somebody who
+     wrote an expression meant it. #}
+  <details class="pf-escape">
+    <summary>{{ t('schedule_new.cron') }}</summary>
+    <p class="hint">{{ t('schedule_new.cron_hint') }}</p>
+    <input type="text" id="cron" name="cron" class="mono"
+           value="{{ values.cron | default('') }}" placeholder="0 8 * * 1-5">
+  </details>
 
   <label for="window_days">{{ t('schedule_new.window_days') }}
     <span class="hint">{{ t('schedule_new.window_days_hint') }}</span></label>

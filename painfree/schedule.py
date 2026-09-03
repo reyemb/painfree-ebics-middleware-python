@@ -1,12 +1,18 @@
 """Periodic download jobs: when the next one is due, and who owns it.
 
-The scheduler's whole state is one table. There is no in-process timer wheel
-and no cron, because both of those forget: a process that restarts at 03:00 with
-its schedule in memory has no idea what it was meant to do at 02:55.
+The scheduler's whole state is one table. There is no in-process timer wheel and
+no cron *daemon*, because both of those forget: a process that restarts at 03:00
+with its schedule in memory has no idea what it was meant to do at 02:55.
 ``download_schedule.due_at`` is a row, so a scheduler that comes back finds one
 overdue schedule -- **one**, not one per interval it slept through. Missing a
 window is a gap an operator can see and re-run; firing 288 catch-up downloads
 because a container was restarted is a stampede at the bank's end.
+
+A schedule may nonetheless be *written* as a cron expression
+(``download_schedule.cron``), and that changes none of the above: the expression
+is consulted once, when a finished run computes the next ``due_at``, and the row
+is still the only state. A restart still finds one overdue schedule and not the
+history it slept through (:mod:`painfree.cron`).
 
 **Two schedulers must not both fetch the same window.** The same reasoning as
 :mod:`painfree.queue`, and the same mechanism: the claim is a single conditional
@@ -44,6 +50,7 @@ from typing import Any, Sequence
 from sqlalchemy import Engine, and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 
+from painfree import cron as cron_module
 from painfree import ebics3
 from painfree.audit import (FAILURE, SUCCESS, SYSTEM_ACTOR, Actor,
                             AuditLog)
@@ -85,7 +92,7 @@ MAX_ERROR_LENGTH = 512
 #: :meth:`DownloadSchedules.refetch`, which says so in the ledger.
 MUTABLE = frozenset({"service_name", "msg_name", "msg_version", "msg_variant",
                      "scope", "service_option", "container", "cadence_seconds",
-                     "window_days", "description", "enabled"})
+                     "cron", "window_days", "description", "enabled"})
 
 #: The BTF columns, in the order the engine's ``Service`` takes them. Kept in
 #: one place so a change validated on registration is validated identically on
@@ -128,6 +135,10 @@ class Schedule:
     enabled: bool
     window_days: int | None
     fetched_through: str | None
+    #: A five-field cron expression, or `None` when the cadence decides. Set,
+    #: it is what picks the next run; the cadence still caps the retry after a
+    #: run that did not finish.
+    cron: str | None
     due_at: _dt.datetime
     description: str | None = None
     worker_id: str | None = None
@@ -218,6 +229,7 @@ class Schedule:
                         "container": self.container},
             "label": self.label,
             "cadence_seconds": int(self.cadence.total_seconds()),
+            "cron": self.cron,
             "enabled": self.enabled,
             "health": self.health,
             "running": self.running,
@@ -311,6 +323,19 @@ class ClaimedSchedule:
         return self.schedule.connection_id
 
 
+def _validated_cron(expression: str | None) -> str | None:
+    """The expression as it will be stored, or a refusal naming what is wrong.
+
+    Validated here rather than at the form, so the API and the console cannot
+    disagree about what this service will act on, and so a row can only ever
+    hold an expression the scheduler can read.
+    """
+    text = (expression or "").strip()
+    if not text:
+        return None
+    return cron_module.parse(text).expression
+
+
 class DownloadSchedules:
     """Reads and writes ``download_schedule`` and ``download_run``.
 
@@ -334,6 +359,7 @@ class DownloadSchedules:
                  msg_variant: str | None = None, scope: str | None = None,
                  service_option: str | None = None, container: str | None = None,
                  window_days: int | None = None, enabled: bool = True,
+                 cron: str | None = None,
                  description: str | None = None, actor: Actor | None = None,
                  due_at: _dt.datetime | None = None) -> Schedule:
         """Add one periodic download.
@@ -363,6 +389,7 @@ class DownloadSchedules:
             "msg_name": msg_name, "msg_variant": msg_variant,
             "msg_version": msg_version,
             "cadence_seconds": int(cadence.total_seconds()),
+            "cron": _validated_cron(cron),
             "enabled": enabled, "window_days": window_days,
             "fetched_through": None, "due_at": due_at or now,
             "created_at": now, "updated_at": now,
@@ -466,6 +493,8 @@ class DownloadSchedules:
         if not changes:
             return current
 
+        if "cron" in changes:
+            changes["cron"] = _validated_cron(changes["cron"])
         cadence_seconds = changes.get("cadence_seconds")
         if cadence_seconds is not None and (
                 _dt.timedelta(seconds=int(cadence_seconds)) < MIN_CADENCE):
@@ -849,6 +878,20 @@ class DownloadSchedules:
         """
         if not finished:
             return now + min(schedule.cadence, RETRY_AFTER)
+        if schedule.cron:
+            # A time, not a rate: the next matching minute, and no jitter. The
+            # jitter exists so a hundred hourly schedules stop arriving in one
+            # second; an operator who wrote `0 8 * * *` asked for 08:00 and
+            # moving it by minutes to spread load would be answering a question
+            # they did not ask.
+            try:
+                return cron_module.parse(schedule.cron).next_after(now)
+            except cron_module.CronError:
+                # Stored expressions are validated on the way in, so this is a
+                # row edited underneath the service. Fall back to the cadence
+                # rather than stranding the schedule, and say so.
+                log.error("schedule.cron_unreadable",
+                          schedule_id=schedule.schedule_id, cron=schedule.cron)
         spread = schedule.cadence.total_seconds() * JITTER_FRACTION
         return now + schedule.cadence + _dt.timedelta(
             seconds=self._random.uniform(-spread, spread))
@@ -870,6 +913,7 @@ def _from_row(row) -> Schedule:
         scope=row["scope"], service_option=row["service_option"],
         container=row["container"],
         cadence=_dt.timedelta(seconds=row["cadence_seconds"]),
+        cron=row["cron"],
         enabled=bool(row["enabled"]), window_days=row["window_days"],
         fetched_through=row["fetched_through"], due_at=row["due_at"],
         description=row["description"],

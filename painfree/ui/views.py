@@ -43,6 +43,7 @@ from fastapi.responses import PlainTextResponse, RedirectResponse
 import painfree
 from painfree import access, ebics3, reconcile, webhooks
 from painfree.api import record_webhook_change
+from painfree.catalogue import Catalogue
 from painfree.authn import requires, requires_on
 from painfree.errors import ConflictError, NotFoundError
 from painfree.identity import Principal, Scope
@@ -756,6 +757,77 @@ def schedule_list(request: Request, connection_id: str = "",
                   behind=[row for row in rows if row.ledger().behind])
 
 
+def _picked_download(form: dict[str, str]) -> dict[str, str] | None:
+    """The BTF chosen from the bank's own list, or ``None`` to read the fields.
+
+    One `select` submits one string, so the whole triplet rides in the value and
+    is split here. Picking wins over the manual fields when both are present --
+    the same rule as the payment form's typed IBAN and the opposite direction,
+    because here the *published* answer is the authority and the fields are the
+    escape hatch.
+    """
+    raw = (form.get("published_btf") or "").strip()
+    if not raw:
+        return None
+    parts = raw.split("|")
+    if len(parts) != 7:
+        raise ConflictError(
+            "that is not a download this bank published; choose one from the "
+            "list or fill the BTF fields yourself")
+    connection_id, service, scope, msg, version, container, option = parts
+    return {"connection_id": connection_id, "service_name": service,
+            "scope": scope or None, "msg_name": msg,
+            "msg_version": version or None, "container": container or None,
+            "service_option": option or None, "msg_variant": None}
+
+
+def _published_downloads(request: Request, connections) -> list[dict]:
+    """Every download the banks themselves publish, ready to be picked.
+
+    The form used to ask for the six BTF fields as free text beside a table of
+    combinations "common in Switzerland". painfree already knows the real
+    answer: `HTD` lists every `BTD` row this subscriber may fetch, parsed and
+    stored per connection. Retyping it is how a `container` ends up empty when
+    the bank published `ZIP`, and that is `091113` hours later rather than a
+    message here.
+
+    The generic table stays as a fallback for a connection that has never
+    fetched `HTD`, and it is a fallback: what a bank publishes beats what is
+    usually true.
+    """
+    catalogue = Catalogue(request.app.state.engine)
+    offered: list[dict] = []
+    for connection in connections:
+        entry = catalogue.get(connection.connection_id, "HTD")
+        if entry is None or entry.summary is None:
+            continue
+        seen: set[tuple] = set()
+        for row in entry.summary.get("orders", []):
+            if row.get("admin_order_type") != "BTD":
+                continue
+            service = row.get("service") or {}
+            key = (service.get("name"), service.get("scope"),
+                   service.get("msg_name"), service.get("msg_version"),
+                   service.get("container"), service.get("option"))
+            # A bank lists the same service once per version it accepts, and
+            # once more with no version at all. The unversioned row is the same
+            # download with less said about it, so it is not a second choice.
+            if key in seen or not service.get("msg_version"):
+                continue
+            seen.add(key)
+            offered.append({
+                "connection_id": connection.connection_id,
+                "description": row.get("description") or "",
+                "service_name": service.get("name") or "",
+                "scope": service.get("scope") or "",
+                "msg_name": service.get("msg_name") or "",
+                "msg_version": service.get("msg_version") or "",
+                "container": service.get("container") or "",
+                "service_option": service.get("option") or "",
+            })
+    return offered
+
+
 @router.get("/schedules/new")
 def new_schedule(request: Request, connection_id: str = "",
                  principal: Principal = Depends(requires(Scope.schedules_manage))):
@@ -765,9 +837,11 @@ def new_schedule(request: Request, connection_id: str = "",
     for. Hiding an option is not the control -- the `POST` below checks -- but
     offering one that will be refused is a form that lies.
     """
+    held = access.held(principal, _registry(request).all())
     return render(request, "schedule_new.html",
-                  connections=access.held(principal, _registry(request).all()),
+                  connections=held,
                   selected_connection=connection_id,
+                  published=_published_downloads(request, held),
                   presets=BTF_PRESETS, values={})
 
 
@@ -784,7 +858,10 @@ def register_schedule(
     of the submitted form would hit `uq_download_schedule_btf` and be told the
     schedule already exists rather than making a second one.
     """
-    connection_id = _required(form, "connection_id", "the connection")
+    picked = _picked_download(form)
+    connection_id = picked.pop("connection_id", "") if picked else ""
+    connection_id = connection_id or _required(form, "connection_id",
+                                               "the connection")
     access.require(principal, connection_id, Scope.schedules_manage,
                    what="bank connection")
     _registry(request).get(connection_id)
@@ -792,8 +869,9 @@ def register_schedule(
         schedule = _schedules(request).register(
             connection_id, actor=principal.actor(),
             cadence=_dt.timedelta(seconds=_cadence(form)),
+            cron=(form.get("cron") or "").strip() or None,
             description=(form.get("description") or "").strip() or None,
-            window_days=_window_days(form), **_btf(form))
+            window_days=_window_days(form), **(picked or _btf(form)))
     return _see(f"{PREFIX}/schedules/{schedule.schedule_id}?created=1")
 
 
