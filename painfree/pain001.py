@@ -312,8 +312,26 @@ def build(
         _transaction(payment, transaction,
                      payment_type if per_transaction else None)
 
-    return etree.tostring(root, xml_declaration=True, encoding="UTF-8",
-                          pretty_print=True)
+    # Flat, and not as a matter of taste. This document is the message the
+    # electronic signature covers, and EBICS hashes order data with the
+    # OS-specific control characters removed -- `ebics-web-client` strips
+    # `0x0A`, `0x0D` and `0x1A` before signing, citing the specification's
+    # section on A005/A006. A pretty-printed `pain.001` therefore has two
+    # defensible digests, ours and the bank's, and the bank reports the
+    # disagreement as `091301 EBICS_SIGNATURE_VERIFICATION_FAILED` rather than
+    # as the encoding problem it is.
+    #
+    # A document carrying none of those bytes has one digest under either
+    # reading, which settles the question instead of betting on it. Indentation
+    # in a signed payload was never worth anything: nothing reads this but a
+    # bank, the console formats it for display, and it is a third smaller.
+    #
+    # `xml_declaration=False` and the declaration written here, because lxml
+    # follows its own with a newline and that newline is one of the bytes at
+    # issue.
+    return (b"<?xml version='1.0' encoding='UTF-8'?>"
+            + etree.tostring(root, xml_declaration=False, encoding="UTF-8",
+                             pretty_print=False))
 
 
 def _transaction(parent: etree._Element,
