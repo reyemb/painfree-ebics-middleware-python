@@ -45,6 +45,12 @@
   <tr><td>{{ t('order.bank_order_id') }}</td><td>{{ order.bank_order_id or '—' }}</td></tr>
   <tr><td>{{ t('orders.return_code') }}</td><td>{% if order.return_code %}<code>{{ order.return_code }}</code>{% else %}—{% endif %}</td></tr>
   <tr><td>{{ t('orders.report_text') }}</td><td>{{ bank.words(order.report_text) }}</td></tr>
+  {# The two documents, kept apart because they are sent in different phases
+     and answer different questions: this is what was built, the one below is
+     what the bank was actually handed and refused. #}
+  <tr><td>{{ t('orders.document') }}</td><td>
+    <a href="/ui/orders/{{ order.order_id }}/document.xml">{{ t('orders.document_download') }}</a>
+    <br><span class="hint">{{ t('orders.document_phase') }}</span></td></tr>
   {# What the bank refused, kept and checked here. A code like `091113` names
      no element, so without this an operator has nothing to look at and the
      only party who can still see the document is the bank. #}

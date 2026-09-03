@@ -536,7 +536,33 @@ def orders(request: Request, connection_id: str = "", state: str = "",
         selected_connection=connection_id, selected_state=chosen)
 
 
+@router.get("/orders/{order_id}/document.xml")
+def order_document(request: Request, order_id: str,
+                   principal: Principal = Depends(
+                       requires(Scope.payments_read))):
+    """The `pain.001` this order carries, as it was built and signed.
+
+    Kept separate from the refused EBICS request beside it because the two
+    answer different questions and are sent in different phases. An upload
+    announces itself first -- the BTF, the segment count, the signature over
+    this document -- and only then transfers the document. A bank that refuses
+    the announcement never receives this at all, which is why a refusal can be
+    both real and unrelated to anything in here.
+
+    Offered so that "what did we actually build" stops needing a database.
+    """
+    with bind(order_id=order_id):
+        row = _orders(request).get(order_id)
+        access.require(principal, row.connection_id, Scope.payments_read,
+                       what="order")
+        return Response(
+            row.document, media_type="application/xml",
+            headers={"Content-Disposition":
+                     f'attachment; filename="{order_id}.xml"'})
+
+
 @router.get("/orders/{order_id}/refused-request.xml")
+
 def refused_request(request: Request, order_id: str,
                     principal: Principal = Depends(
                         requires(Scope.payments_read))):

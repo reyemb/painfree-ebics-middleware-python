@@ -199,6 +199,7 @@ PER_CONNECTION: tuple[tuple[str, str, object], ...] = (
     ("POST", "/ui/connections/{cid}/access", "form"),
     ("POST", "/ui/connections/{cid}/access/revoke", "form"),
     ("GET", "/ui/orders/ord_{cid}", None),
+    ("GET", "/ui/orders/ord_{cid}/document.xml", None),
     ("GET", "/ui/orders/ord_{cid}/refused-request.xml", None),
     ("GET", "/ui/orders/ord_{cid}/replay", None),
     ("POST", "/ui/orders/ord_{cid}/replay", "form"),
