@@ -533,6 +533,8 @@
   "payment_new.debtor_iban_from_htd": "Eines der von der Bank veröffentlichten wählen oder ein anderes eintippen.",
   "payment_new.debtor_iban_hint": "Das Konto, über das diese Verbindung verfügen darf. Leerzeichen werden ignoriert.",
   "payment_new.debtor_iban_no_htd": "Die Bank wurde noch nicht gefragt, über welche Konten dieser Teilnehmer verfügen darf.",
+  "payment_new.debtor_iban_other": "Oder eine andere IBAN",
+  "payment_new.debtor_iban_other_hint": "Leer lassen, um das oben gewählte Konto zu verwenden. Was hier steht, hat Vorrang.",
   "payment_new.debtor_name": "Kontoinhaber",
   "payment_new.end_to_end_id": "End-to-End-ID",
   "payment_new.end_to_end_id_hint": "Ihre eigene Kennung für diese Überweisung, unverändert weitergereicht. Leer gelassen sieht die Bank NOTPROVIDED.",

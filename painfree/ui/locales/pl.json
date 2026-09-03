@@ -544,6 +544,8 @@
   "payment_new.debtor_iban_from_htd": "Wybierz jeden z opublikowanych przez bank albo wpisz inny.",
   "payment_new.debtor_iban_hint": "Rachunek, którym to połączenie może dysponować. Spacje są pomijane.",
   "payment_new.debtor_iban_no_htd": "Banku nie zapytano jeszcze, którymi rachunkami ten subskrybent może dysponować.",
+  "payment_new.debtor_iban_other": "Albo inny IBAN",
+  "payment_new.debtor_iban_other_hint": "Pozostaw puste, aby użyć konta wybranego powyżej. To, co tu wpiszesz, ma pierwszeństwo.",
   "payment_new.debtor_name": "Posiadacz rachunku",
   "payment_new.end_to_end_id": "Identyfikator end-to-end",
   "payment_new.end_to_end_id_hint": "Twój własny identyfikator tego przelewu, przekazywany bez zmian. Pozostawiony pusty sprawia, że bank widzi NOTPROVIDED.",

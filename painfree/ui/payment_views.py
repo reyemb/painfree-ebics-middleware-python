@@ -136,6 +136,20 @@ def _clean(form: dict[str, str], name: str) -> str | None:
     return value or None
 
 
+def debit_account(form: dict[str, str]) -> str:
+    """The debit IBAN: what was typed, or failing that what was picked.
+
+    The form offers both because the published list can be empty, stale, or
+    simply not contain the account somebody needs, and a closed list would
+    refuse a payment the bank would have taken. Typing wins over picking: a
+    person who filled the override meant it, and silently preferring the
+    dropdown they left alone would send a payment to a different account than
+    the one on screen.
+    """
+    typed = (form.get("debtor_iban_other") or "").strip()
+    return (typed or form.get("debtor_iban") or "").replace(" ", "")
+
+
 def instruction_from(form: dict[str, str]) -> payments.PaymentInstruction:
     """The form as the same model the API parses, validated by that model.
 
@@ -158,7 +172,7 @@ def instruction_from(form: dict[str, str]) -> payments.PaymentInstruction:
     }
     body: dict[str, Any] = {
         "debtor": {"name": _clean(form, "debtor_name")},
-        "debtor_iban": (form.get("debtor_iban") or "").replace(" ", ""),
+        "debtor_iban": debit_account(form),
         "debtor_bic": _clean(form, "debtor_bic"),
         "requested_execution_date": (
             form.get("requested_execution_date") or "").strip(),
@@ -265,7 +279,7 @@ def preview_payment(
             entered=entered, preview=preview,
             document=preview.document.decode("utf-8"),
             debit_published=_published_debit(
-                request, connection_id, form.get("debtor_iban", "")),
+                request, connection_id, debit_account(form)),
             # Minted here and carried, not minted on the way in: see the module
             # docstring. A second press of confirm has to be the same payment.
             idempotency_key=f"{KEY_PREFIX}{secrets.token_hex(16)}")

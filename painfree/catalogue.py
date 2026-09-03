@@ -83,7 +83,8 @@ def summarise(order_type: str, document: bytes) -> dict[str, Any]:
             "partner_id": info.partner_id, "user_id": info.user_id,
             "name": info.name,
             "accounts": [{"account_id": a.account_id, "iban": a.iban,
-                          "currency": a.currency, "description": a.description}
+                          "currency": a.currency, "description": a.description,
+                          "holder": a.holder, "bank_code": a.bank_code}
                          for a in info.accounts],
             "orders": [{"admin_order_type": row.admin_order_type,
                         "description": row.description,

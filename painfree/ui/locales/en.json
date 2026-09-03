@@ -533,6 +533,8 @@
   "payment_new.debtor_iban_from_htd": "Pick one the bank published, or type another.",
   "payment_new.debtor_iban_hint": "The account this connection is authorised to draw on. Spaces are ignored.",
   "payment_new.debtor_iban_no_htd": "The bank has not been asked which accounts this subscriber may draw on.",
+  "payment_new.debtor_iban_other": "Or another IBAN",
+  "payment_new.debtor_iban_other_hint": "Leave empty to use the account chosen above. Anything typed here wins.",
   "payment_new.debtor_name": "Account holder",
   "payment_new.end_to_end_id": "End-to-end id",
   "payment_new.end_to_end_id_hint": "Your own identifier for this transfer, passed through unchanged. Left empty, the bank sees NOTPROVIDED.",

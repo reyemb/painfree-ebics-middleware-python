@@ -146,6 +146,14 @@ class AccountInfo:
     description: str | None = None
     iban: str | None = None
     currency: str | None = None
+    #: `AccountHolder`, the name on the account. A *child element*, where
+    #: `Description` is an attribute -- SGKB publishes the first and not the
+    #: second, so a reader of only the attribute falls back to the numeric
+    #: account id and shows an operator `74892` where the bank said a name.
+    holder: str | None = None
+    #: `BankCode international="true"`, which is the institution's BIC as the
+    #: bank itself publishes it.
+    bank_code: str | None = None
 
 
 @dataclass(frozen=True)
@@ -240,12 +248,20 @@ def parse_htd_order_data(
             # Required by the schema, and the key the permissions reference.
             raise DocumentError("an AccountInfo in HTD carries no ID")
         number = node.find(_q("AccountNumber"))
+        code = node.find(_q("BankCode"))
         accounts.append(AccountInfo(
             account_id=identifier,
             description=node.get("Description"),
             iban=(number.text.strip()
                   if number is not None and number.text else None),
             currency=node.get("Currency"),
+            holder=_text(node, "AccountHolder"),
+            # Only when the bank says it is international: the same element
+            # otherwise carries a national code, and a national code read as a
+            # BIC is worse than no BIC.
+            bank_code=(code.text.strip()
+                       if code is not None and code.text
+                       and code.get("international") == "true" else None),
         ))
 
     orders = []

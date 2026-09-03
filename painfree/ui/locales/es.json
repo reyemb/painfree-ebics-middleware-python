@@ -533,6 +533,8 @@
   "payment_new.debtor_iban_from_htd": "Elige una publicada por el banco, o escribe otra.",
   "payment_new.debtor_iban_hint": "La cuenta sobre la que esta conexión está autorizada a disponer. Los espacios se ignoran.",
   "payment_new.debtor_iban_no_htd": "Todavía no se ha preguntado al banco sobre qué cuentas puede disponer este suscriptor.",
+  "payment_new.debtor_iban_other": "O bien otro IBAN",
+  "payment_new.debtor_iban_other_hint": "Déjelo vacío para usar la cuenta elegida arriba. Lo que se escriba aquí tiene prioridad.",
   "payment_new.debtor_name": "Titular de la cuenta",
   "payment_new.end_to_end_id": "Identificador de extremo a extremo",
   "payment_new.end_to_end_id_hint": "Tu propio identificador para esta transferencia, transmitido sin cambios. Si se deja vacío, el banco ve NOTPROVIDED.",

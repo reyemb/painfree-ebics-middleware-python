@@ -533,6 +533,8 @@
   "payment_new.debtor_iban_from_htd": "Choisissez-en un publié par la banque, ou saisissez-en un autre.",
   "payment_new.debtor_iban_hint": "Le compte sur lequel cette connexion est autorisée à tirer. Les espaces sont ignorés.",
   "payment_new.debtor_iban_no_htd": "La banque n'a pas encore été interrogée sur les comptes que cet abonné peut débiter.",
+  "payment_new.debtor_iban_other": "Ou un autre IBAN",
+  "payment_new.debtor_iban_other_hint": "Laissez vide pour utiliser le compte choisi ci-dessus. Ce qui est saisi ici prévaut.",
   "payment_new.debtor_name": "Titulaire du compte",
   "payment_new.end_to_end_id": "Identifiant de bout en bout",
   "payment_new.end_to_end_id_hint": "Votre propre identifiant pour ce virement, transmis tel quel. Laissé vide, la banque voit NOTPROVIDED.",

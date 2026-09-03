@@ -315,11 +315,42 @@ def test_the_debit_account_is_offered_from_what_the_bank_published(console):
 
     page = console.get(f"/ui/connections/{CONNECTION}/payment")
 
-    assert 'list="debtor_accounts"' in page.text
-    assert "<datalist" in page.text
+    # A real select, not a datalist. A datalist renders as a hint: the browser
+    # shows the placeholder as though it were a value and preselects nothing,
+    # so a connection with one account still made somebody choose it.
+    assert '<select id="debtor_iban"' in page.text
+    assert "<datalist" not in page.text
     assert "CH5604835012345678009" in page.text
-    # The label is what makes it pickable rather than a wall of digits.
+    # The name on the account, beside the IBAN -- a wall of digits is not a
+    # choice anybody can check.
     assert "Kontokorrent" in page.text
+
+
+def test_a_single_published_account_is_already_chosen(console):
+    """One account is not a decision, and asking for it as though it were is
+    how a form wastes the only click it gets."""
+    _htd(console)
+
+    page = console.get(f"/ui/connections/{CONNECTION}/payment").text
+    select = page[page.index('<select id="debtor_iban"'):]
+    select = select[:select.index("</select>")]
+
+    assert select.count("<option") == 1, "a lone account needs no empty option"
+    assert "selected" in select
+
+
+def test_an_iban_can_still_be_typed_when_the_list_is_wrong(console):
+    """`AccountInfo` is optional in H005 and a catalogue is only as current as
+    the last fetch, so the published list can be empty, stale, or simply miss
+    the account somebody needs. Typing wins over picking: a person who filled
+    the override meant it."""
+    from painfree.ui.payment_views import debit_account
+
+    assert debit_account({"debtor_iban": "CH56 0483 5012 3456 78009",
+                          "debtor_iban_other": ""}) == "CH5604835012345678009"
+    assert debit_account({"debtor_iban": "CH5604835012345678009",
+                          "debtor_iban_other": "CH76 0078 1613 5447 62004"}) \
+        == "CH7600781613544762004"
 
 
 def test_without_an_htd_the_field_stays_typable_and_says_why(console):

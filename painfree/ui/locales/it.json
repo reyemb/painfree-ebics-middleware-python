@@ -533,6 +533,8 @@
   "payment_new.debtor_iban_from_htd": "Scegline uno pubblicato dalla banca, oppure digitane un altro.",
   "payment_new.debtor_iban_hint": "Il conto su cui questa connessione è autorizzata a operare. Gli spazi vengono ignorati.",
   "payment_new.debtor_iban_no_htd": "Alla banca non è ancora stato chiesto su quali conti questo sottoscrittore può operare.",
+  "payment_new.debtor_iban_other": "Oppure un altro IBAN",
+  "payment_new.debtor_iban_other_hint": "Lasciare vuoto per usare il conto scelto sopra. Ciò che si scrive qui ha la precedenza.",
   "payment_new.debtor_name": "Intestatario del conto",
   "payment_new.end_to_end_id": "Identificativo end-to-end",
   "payment_new.end_to_end_id_hint": "Il tuo identificativo per questo bonifico, trasmesso invariato. Lasciato vuoto, la banca vede NOTPROVIDED.",

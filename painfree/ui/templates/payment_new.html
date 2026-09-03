@@ -39,22 +39,38 @@
   <label for="debtor_iban">{{ t('payment_new.debtor_iban') }}
     <span class="hint">{% if accounts %}{{ t('payment_new.debtor_iban_from_htd') }}{% else %}{{ t('payment_new.debtor_iban_hint') }}{% endif %}</span>
   </label>
-  {# A datalist rather than a select. `AccountInfo` is optional in the H005
-     schema, so a bank may publish none, and a catalogue is only as current as
-     the last fetch -- a closed list built from either would refuse a payment
-     the bank would have taken. Click and pick when the list is right, type
-     when it is not. No script: this is what the element is for. #}
-  <input type="text" id="debtor_iban" name="debtor_iban" required class="mono"
-         {% if accounts %}list="debtor_accounts"{% endif %} value="{{ entered.debtor_iban }}"
-         placeholder="CH93 0076 2011 6238 5295 7">
+  {# A select, and a text field beside it, rather than one or the other.
+
+     `AccountInfo` is optional in the H005 schema so a bank may publish none,
+     and a catalogue is only as current as the last fetch -- a closed list
+     built from either would refuse a payment the bank would have taken. That
+     argument is why this was a datalist, and a datalist renders as a hint
+     rather than a choice: the browser shows the placeholder as though it were
+     a value, and nothing is preselected when there is only one account.
+
+     So both. The list is a real dropdown, selected when the bank published
+     exactly one, and the field below overrides it when something has to be
+     typed. No script -- which is also why the override cannot simply appear
+     when "other" is chosen. #}
   {% if accounts %}
-  <datalist id="debtor_accounts">
+  <select id="debtor_iban" name="debtor_iban" class="mono">
+    {% if accounts | length != 1 %}<option value="">—</option>{% endif %}
     {% for account in accounts %}
     <option value="{{ account.iban }}"
-            label="{{ account.description or account.account_id }}{% if account.currency %} · {{ account.currency }}{% endif %}"></option>
+            {{ 'selected' if entered.debtor_iban == account.iban
+               or (accounts | length == 1 and not entered.debtor_iban) else '' }}>
+      {{ account.holder or account.description or account.account_id }} · {{ account.iban }}{% if account.currency %} · {{ account.currency }}{% endif %}
+    </option>
     {% endfor %}
-  </datalist>
+  </select>
+  <label for="debtor_iban_other">{{ t('payment_new.debtor_iban_other') }}
+    <span class="hint">{{ t('payment_new.debtor_iban_other_hint') }}</span></label>
+  <input type="text" id="debtor_iban_other" name="debtor_iban_other" class="mono"
+         value="" placeholder="CH93 0076 2011 6238 5295 7">
   {% else %}
+  <input type="text" id="debtor_iban" name="debtor_iban" required class="mono"
+         value="{{ entered.debtor_iban }}"
+         placeholder="CH93 0076 2011 6238 5295 7">
   {# Said rather than hidden: an empty dropdown with no explanation reads as
      "this connection has no accounts", which is not what it means. #}
   <p class="hint">{{ t('payment_new.debtor_iban_no_htd') }}
