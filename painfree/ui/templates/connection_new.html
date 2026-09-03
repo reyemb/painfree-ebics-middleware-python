@@ -27,6 +27,14 @@
       <option value="certificate">{{ t('connection_new.digest_certificate') }}</option>
     </select></label>
 
+  {# Ticked by default, and the default is the safe one: the bank holds the
+     payment and a person releases it, so this service alone cannot move money.
+     Clearing it is the deliberate act, and it needs a mandate at the bank that
+     says this subscriber signs alone. #}
+  <label class="checkbox"><input type="checkbox" name="request_eds" value="yes" checked>
+    {{ t('connection.request_eds') }}</label>
+  <p class="hint">{{ t('connection.request_eds_hint') }}</p>
+
   <h3>{{ t('connection_new.product') }}</h3>
   <label>{{ t('connection_new.product_name') }}<span class="hint">{{ t('connection_new.product_name_hint') }}</span>
     <input type="text" name="product_name" placeholder="painfree"></label>

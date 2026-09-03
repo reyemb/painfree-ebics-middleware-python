@@ -67,6 +67,10 @@ class BankConnection:
     #: filling every gap, so a connection nobody has configured behaves exactly
     #: as it did before schemes existed (:mod:`painfree.schemes`).
     schemes: SchemeProfiles
+    #: Whether an upload asks the bank to hold the payment for a human to
+    #: release, rather than executing on this service's signature alone. Sets
+    #: `BTUOrderParams/SignatureFlag/@requestEDS`.
+    request_eds: bool
     created_at: _dt.datetime
     updated_at: _dt.datetime
 
@@ -105,6 +109,7 @@ class ConnectionRegistry:
         product: ebics3.Product | None = None,
         letter_digest: ebics3.LetterDigest | str = ebics3.DEFAULT_LETTER_DIGEST,
         ebics_version: str = DEFAULT_EBICS_VERSION,
+        request_eds: bool = True,
         actor: Actor = SYSTEM_ACTOR,
     ) -> BankConnection:
         """Add a connection in its initial state. No keys yet; that is the worker's.
@@ -142,6 +147,9 @@ class ConnectionRegistry:
             # `painfree.schemes` and a copy written here at registration would
             # be the copy that stops following them.
             "payment_schemes": None,
+            # True unless the mandate says otherwise: a payment waits for a
+            # person rather than executing on this service's signature alone.
+            "request_eds": request_eds,
             "created_at": now, "updated_at": now,
         }
         try:
@@ -169,6 +177,7 @@ class ConnectionRegistry:
                product: ebics3.Product | None = None,
                letter_digest: ebics3.LetterDigest | str | None = None,
                schemes: SchemeProfiles | None = None,
+               request_eds: bool | None = None,
                actor: Actor = SYSTEM_ACTOR) -> BankConnection:
         """Change what an operator is allowed to change, and record what changed.
 
@@ -199,6 +208,8 @@ class ConnectionRegistry:
             # reading the row answers "what will this connection send" without
             # having to know which defaults were in force when it was written.
             values["payment_schemes"] = schemes.as_json()
+        if request_eds is not None:
+            values["request_eds"] = request_eds
         with self._engine.begin() as connection:
             connection.execute(
                 bank_connection.update()
@@ -212,6 +223,12 @@ class ConnectionRegistry:
         if before.letter_digest is not after.letter_digest:
             changed["letter_digest"] = {"from": before.letter_digest.value,
                                         "to": after.letter_digest.value}
+        if before.request_eds != after.request_eds:
+            # Whether a payment executes on this service's signature or waits
+            # for a person is the sharpest thing about a connection, so it goes
+            # in the trail by name rather than being recoverable from a diff.
+            changed["request_eds"] = {"from": before.request_eds,
+                                      "to": after.request_eds}
         if before.schemes != after.schemes:
             # The BTF and the scheme codes decide what a bank is told about a
             # payment, so a change to them belongs in the trail beside the host
@@ -329,6 +346,7 @@ def _from_row(row) -> BankConnection:
         letter_digest=ebics3.LetterDigest(row["letter_digest"]),
         bank_fingerprints=row["bank_fingerprints"], product=product,
         schemes=SchemeProfiles.parse(row["payment_schemes"]),
+        request_eds=bool(row["request_eds"]),
         created_at=row["created_at"], updated_at=row["updated_at"],
     )
 

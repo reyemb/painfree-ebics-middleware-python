@@ -126,6 +126,44 @@ def test_the_bank_receives_a_signed_btu_carrying_the_stored_message(
         announcement, subscriber.public_key, "X002").ok
 
 
+def test_the_announcement_declares_that_it_carries_a_signature(
+        prepared_bank, custody_settings):
+    """The assertion that would have caught `091113`.
+
+    `BTUParamsType/SignatureFlag` is `minOccurs="0"`, so a request without it
+    is schema-clean -- which is why this was invisible for four releases while
+    every schema check passed. The H005 schema says what the absence *means*:
+    *"If not present the order doesn't contain any ES and shall be authorised
+    outside EBICS."*
+
+    Every upload carries a full A006 electronic signature. Omitting the flag
+    therefore told the bank a signed order was unsigned, and SGKB answered
+    `091113 EBICS_INVALID_ORDER_PARAMS`.
+
+    The engine could always write it -- `append_btu_order_params` takes
+    `request_eds`, and `test_ebics3_requests` proves it -- and the service
+    layer never passed one. So the unit test proved the builder and nothing
+    proved the caller, which is why this test is here and not there.
+    """
+    engine, _, bank = prepared_bank
+    submit(engine)
+    seen: list[bytes] = []
+
+    with serving_bank(upload_script(bank.authentication, seen)) as url:
+        worker(engine, custody_settings, url).run_once()
+
+    announcement = etree.fromstring(seen[0])
+    flags = announcement.xpath("//*[local-name()='SignatureFlag']")
+    assert flags, "an upload carrying an ES has to declare it"
+    # True by default: the bank holds the payment for a person to release, so
+    # this service alone cannot move money.
+    assert flags[0].get("requestEDS") == "true"
+
+    params = announcement.xpath("//*[local-name()='BTUOrderParams']")[0]
+    names = [etree.QName(child).localname for child in params]
+    assert names[:2] == ["Service", "SignatureFlag"], names
+
+
 def _public_pem(engine, version: ebics3.KeyVersion) -> bytes:
     from painfree.schema import key_material
 

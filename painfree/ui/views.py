@@ -205,6 +205,10 @@ def register_connection(
             host_url=_required(form, "host_url", "the host URL"),
             letter_digest=(form.get("letter_digest")
                            or ebics3.DEFAULT_LETTER_DIGEST.value),
+            # A checkbox that is absent means unticked, and unticked here means
+            # "this service may move money alone". The default is the safe one,
+            # so the box arrives ticked and clearing it is the deliberate act.
+            request_eds=(form.get("request_eds") or "") == "yes",
             product=product, actor=principal.actor())
     return _see(f"{PREFIX}/connections/{connection_id}/keys")
 
@@ -282,6 +286,7 @@ def save_connection(
             connection_id,
             host_url=_required(form, "host_url", "the host URL"),
             letter_digest=wanted,
+            request_eds=(form.get("request_eds") or "") == "yes",
             schemes=schemes_from(form), product=product,
             actor=principal.actor())
     return _see(f"{PREFIX}/connections/{connection_id}?updated=1")

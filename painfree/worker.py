@@ -363,14 +363,20 @@ class UploadWorker:
                  requested_scheme=order.requested_scheme.value,
                  payment_type_information=(attempt.payment_type
                                            if attempt else None),
+                 request_eds=connection.request_eds,
                  segments=transaction.num_segments,
                  bytes=len(document), attempt=claimed.attempts,
                  reopens_transaction=claimed.reopens)
 
+        # `SignatureFlag` is not decoration. The H005 schema says an upload
+        # without it "doesn't contain any ES and shall be authorised outside
+        # EBICS" -- so omitting it while attaching a full A006 signature tells
+        # the bank a signed order is unsigned, and SGKB answers `091113
+        # EBICS_INVALID_ORDER_PARAMS`.
         request = transaction.initialisation_request(
             service, bank_authentication_key=keys.bank.authentication,
             bank_encryption_key=keys.bank.encryption,
-            file_name=f"{msg_id}.xml")
+            file_name=f"{msg_id}.xml", request_eds=connection.request_eds)
         exchanges = self._exchange(transaction, request, transport, order)
 
         # Persisted before a single segment goes out: the `TransactionID` is

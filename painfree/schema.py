@@ -37,7 +37,7 @@ from typing import Any
 
 from sqlalchemy import (BigInteger, Boolean, Column, DateTime, ForeignKey,
                         Index, Integer, JSON, LargeBinary, MetaData, String,
-                        Table, TypeDecorator, UniqueConstraint)
+                        Table, TypeDecorator, UniqueConstraint, true)
 from sqlalchemy.dialects.postgresql import JSONB
 
 #: Explicit naming so a constraint added later gets the same name on both
@@ -190,6 +190,13 @@ bank_connection = Table(
     # (`painfree.schemes`). NULL is the default set, which sends what this
     # service sent before schemes existed.
     Column("payment_schemes", JsonBlob, nullable=True),
+    # Whether an upload asks the bank to hold the payment for a human to
+    # release, rather than executing on this service's signature alone.
+    # `BTUOrderParams/SignatureFlag/@requestEDS`, and the reason it is per
+    # connection is that it is a mandate question: what this subscriber is
+    # allowed to do at *this* bank, which differs by bank and by who signed
+    # what on paper.
+    Column("request_eds", Boolean, nullable=False, server_default=true()),
     Column("created_at", UtcDateTime, nullable=False),
     Column("updated_at", UtcDateTime, nullable=False),
     UniqueConstraint("host_id", "partner_id", "user_id",

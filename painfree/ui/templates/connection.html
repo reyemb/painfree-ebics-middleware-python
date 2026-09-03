@@ -29,6 +29,11 @@
   <tr><td>{{ t('connection.ebics_version') }}</td><td>{{ connection.ebics_version }}</td></tr>
   <tr><td>{{ t('connection.product') }}</td><td>{{ connection.product.name if connection.product else '—' }}</td></tr>
   <tr><td>{{ t('connection.letter_quotes') }}</td><td>{{ connection.letter_digest.value }}</td></tr>
+  {# Whether a payment on this connection can move money without a person. It
+     belongs beside the identifiers rather than buried in the edit form. #}
+  <tr><td>{{ t('connection.request_eds') }}</td><td>
+    {% if connection.request_eds %}{{ t('connection.request_eds_on') }}
+    {% else %}<span class="tag failed">{{ t('connection.request_eds_off') }}</span>{% endif %}</td></tr>
   <tr><td>INI</td><td>{% if connection.ini_sent %}{{ t('connection.sent_order_id') }}
       <code>{{ connection.ini_order_id or '—' }}</code>{% else %}{{ t('connection.not_sent') }}{% endif %}</td></tr>
   <tr><td>HIA</td><td>{% if connection.hia_sent %}{{ t('connection.sent_order_id') }}

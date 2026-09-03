@@ -42,6 +42,14 @@
       <option value="public_key" {{ 'selected' if connection.letter_digest.value == 'public_key' else '' }}>{{ t('connection_edit.digest_public_key') }}</option>
       <option value="certificate" {{ 'selected' if connection.letter_digest.value == 'certificate' else '' }}>{{ t('connection_edit.digest_certificate') }}</option>
     </select></label>
+
+  {# Ticked by default, and the default is the safe one: the bank holds the
+     payment and a person releases it, so this service alone cannot move money.
+     Clearing it is the deliberate act, and it needs a mandate at the bank that
+     says this subscriber signs alone. #}
+  <label class="checkbox"><input type="checkbox" name="request_eds" value="yes"{{ ' checked' if connection.request_eds else '' }}>
+    {{ t('connection.request_eds') }}</label>
+  <p class="hint">{{ t('connection.request_eds_hint') }}</p>
   {# The letter is on paper, at a bank, and this decides what it says. Once
      INI or HIA has gone out, changing it does not change a key the bank
      holds -- it makes the letter somebody signed quote the wrong hash. #}
