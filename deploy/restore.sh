@@ -37,6 +37,66 @@ if [ -f "$dump.manifest.json" ]; then
     fi
 fi
 
+# --- the schema the dump was taken at -----------------------------------------
+#
+# The custody check below is good and it was the only one. Nothing compared the
+# *schema* version, so restoring a dump taken before an upgrade rolls
+# `alembic_version` backwards while the container stays where it is, and the
+# worker then queries columns that no longer exist:
+#
+#   (psycopg.errors.UndefinedColumn) column payment_order.refused_request
+#   does not exist
+#
+# It fails in the direction nobody watches. `restore.sh` said nothing, the API
+# kept answering because it migrated at startup and holds no queue, and only
+# the worker -- the process with no user in front of it -- was broken, retrying
+# every two seconds.
+#
+# Revision ids in this project are `NNNN_slug`, so the four digits order them.
+# A format this does not recognise is not guessed at: the check says so and
+# stands aside rather than refusing a restore over a naming convention.
+dump_revision=$($compose exec -T db pg_restore --data-only \
+                    --table=alembic_version -f /dev/stdout < "$dump" 2>/dev/null \
+                | grep -oE '^[0-9]{4}_[a-z0-9_]+' | head -1 || true)
+head_revision=$($compose exec -T api python -c \
+                    'from painfree.db import head_revision; print(head_revision())' \
+                2>/dev/null | tr -d '\r' | tail -1 || true)
+
+if [ -n "$dump_revision" ] && [ -n "$head_revision" ]; then
+    dump_number=${dump_revision%%_*}
+    head_number=${head_revision%%_*}
+    if [ "$dump_revision" = "$head_revision" ]; then
+        echo "schema: dump and image are both at $head_revision" >&2
+    elif [ "$dump_number" -gt "$head_number" ] 2>/dev/null; then
+        cat >&2 <<NOTE
+
+This dump is at $dump_revision and this image expects $head_revision.
+
+The dump is NEWER than the code. Restoring it would leave tables this image
+does not know how to read, and there is no downgrade path that recovers the
+data those columns hold. Run the image the dump came from, or take a dump from
+a deployment at $head_revision.
+NOTE
+        exit 2
+    elif [ "$dump_number" -lt "$head_number" ] 2>/dev/null; then
+        cat >&2 <<NOTE
+
+Note: this dump is at $dump_revision and this image expects $head_revision.
+
+The restore will roll the schema backwards. The API migrated at startup and
+will not do it again, so the worker will query columns that no longer exist and
+retry every two seconds with nobody watching. After the restore finishes:
+
+    $compose exec api python -m painfree migrate
+    $compose restart worker
+
+NOTE
+    fi
+else
+    echo "note: could not read the schema version from the dump or the image;" >&2
+    echo "      restoring anyway, and \`painfree migrate\` afterwards is cheap" >&2
+fi
+
 echo "restoring $dump into the running database…" >&2
 # --clean --if-exists so a restore over a schema the API already migrated does
 # not fail on every existing object. Exit status is checked below rather than

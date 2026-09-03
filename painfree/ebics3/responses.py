@@ -126,6 +126,9 @@ class ResponseStatus:
 
     technical: ReturnCode | None
     business: ReturnCode | None
+    #: `header/mutable/ReportText`, and **only** that. H005 gives the body a
+    #: `ReturnCode` and no text of its own, so this sentence describes the
+    #: technical code and nothing else.
     report_text: str | None = None
 
     @property
@@ -133,6 +136,27 @@ class ResponseStatus:
         if self.technical is not None and not self.technical.is_ok:
             return self.technical
         return self.business or self.technical
+
+    @property
+    def decisive_report_text(self) -> str | None:
+        """The bank's sentence, when it describes the code that failed.
+
+        An upload can pass the header and fail the body -- a refused transfer
+        phase is exactly that shape -- and then `report_text` is the *header's*
+        text, which says `[EBICS_OK] OK` because the header was fine. Attaching
+        it to the body's refusal produced an order page, an API response and a
+        webhook that described a rejected payment as `OK`: two structured
+        fields right and the one sentence a human reads wrong, which is the
+        worst of the three arrangements.
+
+        The body has no `ReportText` in H005, so there is nothing truer to put
+        there. `None` is the honest answer, and the code name --
+        `EBICS_SIGNATURE_VERIFICATION_FAILED` -- is what says what happened.
+        """
+        code = self.decisive
+        if code is None or code is self.technical:
+            return self.report_text
+        return None
 
     @property
     def ok(self) -> bool:
@@ -156,10 +180,11 @@ class ResponseStatus:
         code = self.decisive
         if code is None or not code.raises:
             return
-        detail = f": {self.report_text}" if self.report_text else ""
+        text = self.decisive_report_text
+        detail = f": {text}" if text else ""
         raise BankRefusedError(f"{context} -- {code}{detail}",
                                return_code=code.code, name=code.name,
-                               report_text=self.report_text,
+                               report_text=text,
                                retryable=code.is_retryable,
                                terminal=code.is_terminal)
 

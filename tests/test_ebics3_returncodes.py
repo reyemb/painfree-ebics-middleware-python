@@ -129,6 +129,54 @@ def test_a_healthy_header_leaves_the_order_to_answer_for_itself():
     assert not status.ok
 
 
+def test_a_body_refusal_is_not_described_by_the_header_s_text():
+    """`report_text` belongs to the header code, and only to it.
+
+    An upload can pass the header and fail the body -- a refused transfer phase
+    is exactly that shape -- and the header then reads `[EBICS_OK] OK`, because
+    the header was fine. Reporting that sentence beside the body's refusal put
+    this on the order page, in the API response and in the webhook:
+
+        {"order_state": "rejected", "return_code": "091301",
+         "return_code_name": "EBICS_SIGNATURE_VERIFICATION_FAILED",
+         "report_text": "[EBICS_OK] OK"}
+
+    A rejected payment described as OK. Two structured fields right and the one
+    sentence a human actually reads wrong, which is the worst of the three
+    arrangements: an operator who trusts the prose concludes it went through.
+
+    H005 gives the body a `ReturnCode` and no `ReportText` of its own, so there
+    is nothing truer to substitute. `None` is the honest answer, and the code
+    name is what says what happened.
+    """
+    status = ebics3.parse_response(
+        document(header="000000", body="091301",
+                 report="[EBICS_OK] OK")).status
+
+    assert status.decisive.name == "EBICS_SIGNATURE_VERIFICATION_FAILED"
+    assert status.report_text == "[EBICS_OK] OK", "the header's text is the header's"
+    assert status.decisive_report_text is None
+
+    with pytest.raises(ebics3.BankRefusedError) as refused:
+        status.raise_for_status()
+    assert refused.value.report_text is None
+    assert "[EBICS_OK] OK" not in str(refused.value)
+    assert "EBICS_SIGNATURE_VERIFICATION_FAILED" in str(refused.value)
+
+
+def test_a_header_refusal_still_carries_its_own_text():
+    """The other half of the rule: when the header is what failed, its sentence
+    describes the failure and is the most useful thing in the refusal."""
+    status = ebics3.parse_response(
+        document(header="091010", body="000000",
+                 report="Auftragsart nicht bekannt")).status
+
+    assert status.decisive_report_text == "Auftragsart nicht bekannt"
+    with pytest.raises(ebics3.BankRefusedError) as refused:
+        status.raise_for_status()
+    assert refused.value.report_text == "Auftragsart nicht bekannt"
+
+
 def test_a_response_with_only_a_technical_code_still_classifies():
     status = ebics3.parse_response(document(header="061001", body="")).status
     assert status.business is None

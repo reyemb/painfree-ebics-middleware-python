@@ -480,3 +480,45 @@ def test_the_typed_iban_is_folded_away_but_still_works(console):
     # No placeholder that reads as a value in a field that takes precedence.
     block = page[page.index('name="debtor_iban_other"'):]
     assert "placeholder" not in block[:200]
+
+
+def test_a_catalogue_stored_by_an_older_release_still_renders(console):
+    """An upgrade must not take the payment page away.
+
+    `_debit_accounts` reads the **stored** summary in `bank_catalogue`, written
+    whenever `HTD` was last fetched -- not the parser at request time. 0.5.1
+    added `holder` and `bank_code` to `AccountInfo` and the template renders
+    `account.holder`; Jinja runs with `StrictUndefined`, so a summary written
+    before that upgrade raised
+
+        UndefinedError: 'dict object' has no attribute 'holder'
+
+    and every deployment whose catalogue predated the release lost the page it
+    needs to send a payment. Nothing in the upgrade said that re-fetching `HTD`
+    was the cure.
+
+    Reading through the dataclass makes a missing key the field's default. A
+    stale cache then reads as "the bank did not tell us that", which is true.
+    """
+    from sqlalchemy import insert
+    from painfree.schema import bank_catalogue
+    import datetime as _dt
+
+    stale = {"partner_id": "PARTNER1", "user_id": "USER1", "name": "Muster AG",
+             # Exactly the keys a pre-0.5.1 release wrote: no holder, no
+             # bank_code.
+             "accounts": [{"iban": "CH5604835012345678009", "currency": "CHF",
+                           "account_id": "74892", "description": None}],
+             "orders": []}
+    now = _dt.datetime.now(_dt.timezone.utc)
+    with console.app.state.engine.begin() as connection:
+        connection.execute(insert(bank_catalogue).values(
+            connection_id=CONNECTION, order_type="HTD", document=b"<old/>",
+            summary=stale, fetched_at=now))
+
+    page = console.get(f"/ui/connections/{CONNECTION}/payment")
+
+    assert page.status_code == 200, page.text[:400]
+    assert "CH5604835012345678009" in page.text
+    # No holder in the row, so the option falls back to the account id.
+    assert "74892" in page.text

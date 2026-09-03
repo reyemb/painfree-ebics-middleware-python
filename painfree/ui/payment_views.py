@@ -45,7 +45,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
 from pydantic import ValidationError
 
-from painfree import payments, sps
+from painfree import ebics3, payments, sps
 from painfree.identity import Principal, Scope
 from painfree.logging import bind
 from painfree.authn import requires_on
@@ -72,7 +72,8 @@ FIELDS = (
 )
 
 
-def _debit_accounts(request: Request, connection_id: str) -> list[dict]:
+def _debit_accounts(request: Request,
+                    connection_id: str) -> list[ebics3.AccountInfo]:
     """The accounts `HTD` says this subscriber may draw on, for the form.
 
     Offered as suggestions rather than as the only choices. ``AccountInfo`` is
@@ -82,14 +83,33 @@ def _debit_accounts(request: Request, connection_id: str) -> list[dict]:
     payment the bank would have taken, which is a worse failure than a typo --
     and the typo is caught anyway, by the IBAN check, before anything is built.
 
-    So the field stays a text input with a datalist behind it: click and pick
+    So the form offers a select of these and a typed override beside it: pick
     when the list is right, type when it is not. Empty when no `HTD` has been
     fetched, which the form says rather than hides.
     """
     entry = Catalogue(request.app.state.engine).get(connection_id, "HTD")
     if entry is None or entry.summary is None:
         return []
-    return [account for account in entry.summary.get("accounts", [])
+    # Through the dataclass, not as the stored dict. The summary is a cache
+    # written whenever `HTD` was last fetched, and a row written by an older
+    # release has only the keys that release knew: 0.5.1 added `holder` and
+    # `bank_code`, the template renders `account.holder`, and Jinja runs with
+    # `StrictUndefined` -- so an upgrade turned the payment page into a 500 for
+    # every deployment whose catalogue predated it, with nothing saying that
+    # re-fetching `HTD` was the cure.
+    #
+    # `AccountInfo` has defaults for every field but the id, so a missing key
+    # becomes `None` and the form falls back to what it always did. A stale
+    # cache should read as "the bank did not tell us that", which is true, and
+    # not as an exception.
+    return [ebics3.AccountInfo(
+                account_id=str(account.get("account_id") or ""),
+                description=account.get("description"),
+                iban=account.get("iban"),
+                currency=account.get("currency"),
+                holder=account.get("holder"),
+                bank_code=account.get("bank_code"))
+            for account in entry.summary.get("accounts", [])
             if account.get("iban")]
 
 
@@ -122,7 +142,7 @@ def _published_debit(request: Request, connection_id: str,
     if not accounts:
         return None
     wanted = (iban or "").replace(" ", "").upper()
-    return any((account["iban"] or "").upper() == wanted
+    return any((account.iban or "").upper() == wanted
                for account in accounts)
 
 
