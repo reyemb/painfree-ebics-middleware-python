@@ -571,7 +571,7 @@
   "payment_preview.debit_not_published": "absent de la liste de la banque",
   "payment_preview.debit_not_published_why": "la banque n'a pas publié ce compte pour cet abonné. Cette liste peut être incomplète ou périmée : cela mérite un second regard plutôt qu'un arrêt.",
   "payment_preview.document": "Le document pain.001",
-  "payment_preview.document_hint": "Exactement ce qui sera signé et téléversé, à l'exception de l'identifiant de message et de l'horodatage, générés au moment de la confirmation.",
+  "payment_preview.document_hint": "Indenté ici pour la lecture. Ce qui est signé et transmis ne contient aucun retour à la ligne, et c'est ce que fournit le téléchargement — hormis l'identifiant de message et l'horodatage, régénérés à la confirmation.",
   "payment_preview.downgraded": "rétrogradé",
   "payment_preview.execution_date": "Date d'exécution",
   "payment_preview.from": "De",

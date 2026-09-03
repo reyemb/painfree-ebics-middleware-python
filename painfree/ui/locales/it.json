@@ -571,7 +571,7 @@
   "payment_preview.debit_not_published": "non nell'elenco della banca",
   "payment_preview.debit_not_published_why": "la banca non ha pubblicato questo conto per questo sottoscrittore. L'elenco può essere incompleto o non aggiornato: merita un secondo sguardo, non un arresto.",
   "payment_preview.document": "Il documento pain.001",
-  "payment_preview.document_hint": "Esattamente ciò che verrà firmato e caricato, tranne l'identificativo del messaggio e l'orario, generati al momento della conferma.",
+  "payment_preview.document_hint": "Indentato qui per la lettura. Ciò che viene firmato e caricato non contiene interruzioni di riga, ed è quanto fornisce il download — tranne l'identificativo del messaggio e la marca temporale, rigenerati alla conferma.",
   "payment_preview.downgraded": "declassato",
   "payment_preview.execution_date": "Data di esecuzione",
   "payment_preview.from": "Da",

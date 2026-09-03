@@ -50,8 +50,13 @@
 </table>
 
 <h2>{{ t('payment_preview.document') }}</h2>
+{# Indented here and nowhere else. The bytes that get signed carry no line
+   breaks, so this is a rendering of the document rather than the document --
+   and the hint says which is which, because a page that showed a formatted
+   copy while claiming to show what is sent is how somebody validates the wrong
+   bytes. #}
 <p class="hint">{{ t('payment_preview.document_hint') }}</p>
-<pre class="json">{{ document }}</pre>
+<pre class="json">{{ document | pretty_xml }}</pre>
 
 <h2>{{ t('payment_preview.send') }}</h2>
 <form class="stack card" method="post"

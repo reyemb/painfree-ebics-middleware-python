@@ -571,7 +571,7 @@
   "payment_preview.debit_not_published": "no está en la lista del banco",
   "payment_preview.debit_not_published_why": "el banco no publicó esta cuenta para este suscriptor. Esa lista puede estar incompleta o desactualizada: merece una segunda mirada, no una parada.",
   "payment_preview.document": "El documento pain.001",
-  "payment_preview.document_hint": "Exactamente lo que se firmará y subirá, salvo el identificador del mensaje y la marca de tiempo, que se generan al confirmar.",
+  "payment_preview.document_hint": "Indentado aquí para poder leerlo. Lo que se firma y se envía no lleva saltos de línea, y es lo que entrega la descarga — salvo el identificador de mensaje y la marca de tiempo, que se generan de nuevo al confirmar.",
   "payment_preview.downgraded": "degradado",
   "payment_preview.execution_date": "Fecha de ejecución",
   "payment_preview.from": "De",

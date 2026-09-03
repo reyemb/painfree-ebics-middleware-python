@@ -571,7 +571,7 @@
   "payment_preview.debit_not_published": "not in the bank's list",
   "payment_preview.debit_not_published_why": "the bank did not publish this account for this subscriber. That list can be incomplete or out of date, so this is worth a second look rather than a reason to stop.",
   "payment_preview.document": "The pain.001 document",
-  "payment_preview.document_hint": "Exactly what will be signed and uploaded, except for the message id and the timestamp, which are minted when you confirm.",
+  "payment_preview.document_hint": "Indented here so it can be read. What is signed and uploaded carries no line breaks, and is what the download serves — apart from the message id and timestamp, which are generated fresh on confirming.",
   "payment_preview.downgraded": "downgraded",
   "payment_preview.execution_date": "Execution date",
   "payment_preview.from": "From",

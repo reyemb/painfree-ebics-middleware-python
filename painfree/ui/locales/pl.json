@@ -582,7 +582,7 @@
   "payment_preview.debit_not_published": "brak na liście banku",
   "payment_preview.debit_not_published_why": "bank nie opublikował tego rachunku dla tego subskrybenta. Ta lista bywa niepełna lub nieaktualna — to powód, by spojrzeć uważniej, a nie by przerywać.",
   "payment_preview.document": "Dokument pain.001",
-  "payment_preview.document_hint": "Dokładnie to, co zostanie podpisane i wysłane, poza identyfikatorem wiadomości i znacznikiem czasu, które powstają przy potwierdzeniu.",
+  "payment_preview.document_hint": "Tu wcięte, aby dało się przeczytać. Podpisywana i wysyłana wersja nie zawiera znaków końca linii i to ją udostępnia pobieranie — poza identyfikatorem wiadomości i znacznikiem czasu, tworzonymi na nowo przy potwierdzeniu.",
   "payment_preview.downgraded": "obniżony",
   "payment_preview.execution_date": "Data wykonania",
   "payment_preview.from": "Od",

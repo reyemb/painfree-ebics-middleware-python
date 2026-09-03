@@ -112,6 +112,12 @@ def test_the_previewed_document_is_the_one_that_gets_sent(console):
     Only two fields may differ: the `MsgId` and the `CreDtTm`, both minted at
     submission. Anything else differing means the console is showing an
     operator a document that is not the one their money moves under.
+
+    Whitespace between tags is not one of those things. The page indents the
+    document for reading and what is signed carries no line breaks at all, so
+    the comparison collapses inter-tag whitespace -- it still asserts the same
+    document, element for element and value for value, and no longer asserts
+    the same formatting, which was never the claim.
     """
     app = console.app
     page = _preview(console)
@@ -133,7 +139,11 @@ def test_the_previewed_document_is_the_one_that_gets_sent(console):
         document = re.sub(r"<CreDtTm>[^<]+</CreDtTm>", "<CreDtTm/>", document)
         # `PmtInfId` defaults to the message id when the caller names none, so
         # it moves with it and for the same reason.
-        return re.sub(r"<PmtInfId>[^<]+</PmtInfId>", "<PmtInfId/>", document)
+        document = re.sub(r"<PmtInfId>[^<]+</PmtInfId>", "<PmtInfId/>", document)
+        # Formatting is not the document: drop the declaration and collapse the
+        # whitespace that only exists between tags.
+        document = re.sub(r"<\?xml[^>]*\?>", "", document)
+        return re.sub(r">\s+<", "><", document).strip()
 
     import html
     assert normalise(html.unescape(shown)) == normalise(
@@ -429,3 +439,25 @@ def test_the_account_holder_is_blank_when_no_htd_has_been_fetched(console):
     page = console.get(f"/ui/connections/{CONNECTION}/payment").text
     assert 'name="debtor_name"' in page
     assert "Muster AG" not in page
+
+
+def test_the_preview_indents_the_document_and_says_it_did(console):
+    """The signed bytes carry no line breaks, so the preview shows a rendering.
+
+    Both halves matter. A single 1100-character line is not something a person
+    can check a payment in, and a page that formatted the document while
+    claiming to show what is sent is how somebody validates the wrong bytes --
+    which is the confusion that made `091301` take a day to find.
+    """
+    page = _preview(console).text
+
+    assert "<CstmrCdtTrfInitn>" in page or "&lt;CstmrCdtTrfInitn&gt;" in page
+    # Indented: the closing tag of a nested element sits on its own line.
+    assert "\n  " in page
+
+    from painfree.ui.rendering import _pretty_xml
+    flat = b"<?xml version='1.0' encoding='UTF-8'?><a><b>1</b></a>"
+    assert _pretty_xml(flat).count("\n") >= 2, "a rendering has line breaks"
+    # And the filter never raises on a display path.
+    assert _pretty_xml(b"not xml") == "not xml"
+    assert _pretty_xml("not xml either") == "not xml either"

@@ -571,7 +571,7 @@
   "payment_preview.debit_not_published": "nicht in der Liste der Bank",
   "payment_preview.debit_not_published_why": "die Bank hat dieses Konto für diesen Teilnehmer nicht veröffentlicht. Diese Liste kann unvollständig oder veraltet sein — also ein Grund zum genauen Hinsehen, nicht zum Abbrechen.",
   "payment_preview.document": "Das pain.001-Dokument",
-  "payment_preview.document_hint": "Genau das, was signiert und hochgeladen wird — bis auf die Nachrichten-ID und den Zeitstempel, die beim Bestätigen neu erzeugt werden.",
+  "payment_preview.document_hint": "Hier zum Lesen eingerückt. Signiert und hochgeladen wird die Fassung ohne Zeilenumbrüche, und die liefert der Download — bis auf Nachrichten-ID und Zeitstempel, die beim Bestätigen neu erzeugt werden.",
   "payment_preview.downgraded": "herabgestuft",
   "payment_preview.execution_date": "Ausführungsdatum",
   "payment_preview.from": "Von",

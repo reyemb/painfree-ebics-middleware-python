@@ -76,7 +76,7 @@ away.
 The scripts are inside the image; take them out of it:
 
 ```bash
-podman run --rm ghcr.io/reyemb/painfree:0.5.2 deploy-scripts | tar x
+podman run --rm ghcr.io/reyemb/painfree:0.5.3 deploy-scripts | tar x
 ```
 
 That writes `deploy/` into the current directory — seven scripts, matching the

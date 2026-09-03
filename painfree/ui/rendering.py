@@ -110,6 +110,7 @@ def _environment() -> Environment:
     environment.filters["amount"] = _amount
     environment.filters["count"] = _count
     environment.filters["pretty_json"] = _pretty_json
+    environment.filters["pretty_xml"] = _pretty_xml
     environment.globals["stylesheet"] = Markup(STYLESHEET)
     environment.globals["theme_script"] = Markup(THEME_SCRIPT)
     return environment
@@ -230,6 +231,35 @@ def _formats(context: Any) -> i18n.Formats:
 def _pretty_json(value: Any) -> str:
     return json.dumps(value, indent=2, sort_keys=True, ensure_ascii=False,
                       default=str)
+
+
+def _pretty_xml(value: str | bytes) -> str:
+    """Indent a document **for reading only**.
+
+    The `pain.001` this service sends carries no line breaks, deliberately:
+    EBICS hashes order data with the OS-specific control characters removed, so
+    a document containing them has two defensible digests and the bank refuses
+    it. That makes the bytes correct and a single 1100-character line, which is
+    not something a person can check a payment in.
+
+    So the console indents it, and says so where it shows it. The two are
+    different artefacts and the page must not imply otherwise: what is signed
+    is what the download serves, and this is a rendering of it.
+
+    Unparseable input comes back unchanged rather than raising. This is a
+    display path, and a preview that will not render is worse than one showing
+    an awkward line.
+    """
+    from lxml import etree
+
+    raw = value.encode() if isinstance(value, str) else value
+    try:
+        parser = etree.XMLParser(remove_blank_text=True)
+        return etree.tostring(etree.fromstring(raw, parser),
+                              xml_declaration=True, encoding="UTF-8",
+                              pretty_print=True).decode()
+    except Exception:                                         # noqa: BLE001
+        return raw.decode("utf-8", "replace")
 
 
 _env = _environment()
