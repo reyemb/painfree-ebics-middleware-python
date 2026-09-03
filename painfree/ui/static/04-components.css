@@ -443,3 +443,104 @@ details.pf-escape > summary {
   font: var(--pf-body-small);
 }
 details.pf-escape > summary:hover { color: var(--pf-primary); }
+
+/* --- reading a document rather than a payload -------------------------------
+   Two pages are drawn with what follows: the bank's answer to a payment
+   (`statement_response.html`) and an account statement (`statement_account.html`).
+   Both used to be one `<pre>` of JSON, and both are tables whose whole job is
+   to make one column of numbers comparable with another. */
+
+/* The three levels of a `pain.002`, side by side. A grid rather than a table:
+   there is one row of them and each cell is a small stack, which is what a
+   table cell is bad at. The rung that decided the order carries the edge. */
+.ladder {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1px;
+  background: var(--pf-outline-variant);
+  border: 1px solid var(--pf-outline-variant);
+  border-radius: var(--pf-corner-md);
+  overflow: hidden;
+  margin: 0 0 var(--pf-space-4);
+}
+.rung { background: var(--pf-surface-low); padding: var(--pf-space-3) var(--pf-space-4); }
+.rung.decides {
+  background: var(--pf-surface-container);
+  box-shadow: inset 3px 0 0 var(--pf-primary);
+}
+.rung-level {
+  font: var(--pf-label-medium);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--pf-on-surface-variant);
+}
+.rung-value {
+  margin: var(--pf-space-2) 0 var(--pf-space-1);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pf-space-2);
+  align-items: center;
+}
+
+/* A level the bank left out. Italic and quiet, because "not reported" is not a
+   value and must not be mistaken for one. */
+.silent { color: var(--pf-on-surface-variant); font-style: italic; }
+
+/* Where an answer came from, under the chip that carries it. A status the bank
+   did not state per transaction is underlined so the two are distinguishable
+   at a glance and not only by reading the line beneath. */
+.provenance {
+  display: block;
+  font: var(--pf-body-small);
+  color: var(--pf-on-surface-variant);
+  margin-top: 2px;
+}
+.inherited { border-bottom: 1px dotted currentColor; }
+
+/* Two blocks of columns in one table: what this service sent, and what the
+   bank said about it. The tint is the boundary; without it the halves read as
+   one document, which is the misreading the page exists to prevent. */
+tr.sources th { padding-bottom: var(--pf-space-2); }
+th.ours { background: var(--pf-surface-container); }
+th.theirs, td.theirs {
+  background: color-mix(in srgb, var(--pf-primary-container) 40%, transparent);
+}
+th.theirs { background: var(--pf-primary-container); color: var(--pf-on-primary-container); }
+
+/* A filter that is a row of links rather than a form: every state is a URL an
+   operator can keep, and it needs no script. `aria-current` is what says which
+   one is on, so the styling and the accessibility name cannot disagree. */
+.filters.shows { gap: var(--pf-space-2); align-items: center; }
+.filters.shows a {
+  padding: var(--pf-space-1) var(--pf-space-3);
+  border: 1px solid var(--pf-outline);
+  border-radius: var(--pf-corner-full);
+  font: var(--pf-label-large);
+  color: var(--pf-on-surface);
+  text-decoration: none;
+}
+.filters.shows a:hover {
+  background: color-mix(in srgb, var(--pf-primary) calc(var(--pf-state-hover) * 100%), transparent);
+}
+.filters.shows a[aria-current="page"] {
+  background: var(--pf-secondary-container);
+  color: var(--pf-on-secondary-container);
+  border-color: transparent;
+}
+
+/* The group heading inside a statement: entries the bank has announced and not
+   posted. A row of the table rather than a second table, because they are the
+   same six columns and one of them is deliberately empty. */
+tbody tr th[colspan], table tr th[colspan] {
+  background: var(--pf-surface-container);
+  text-transform: none;
+  letter-spacing: 0;
+  font: var(--pf-title-small);
+  color: var(--pf-on-surface);
+}
+
+/* An entry's drawer. The nested tables are inside a cell, so they lose the
+   card's padding and gain a rule that separates them from the row above. */
+td > details[open] { padding-bottom: var(--pf-space-2); }
+td > details > table { margin-top: var(--pf-space-2); }
+td > details table.plain td:first-child { width: 170px; }

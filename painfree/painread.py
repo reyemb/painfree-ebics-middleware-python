@@ -41,18 +41,54 @@ class Party:
 
 
 @dataclass(frozen=True)
+class Transfer:
+    """One `CdtTrfTxInf`: who is paid, how much, and under which reference.
+
+    The references are here because they are what a `pain.002` answers *by*.
+    A bank reports the status of `E2E-0002`, not of "the second transfer", so
+    a page that means to put the bank's verdict beside the payment it is about
+    has to hold the same key the bank quotes.
+    """
+
+    creditor: Party
+    amount: str | None = None
+    currency: str | None = None
+    end_to_end_id: str | None = None
+    instruction_id: str | None = None
+    remittance: str | None = None
+    reference_type: str | None = None
+    reference: str | None = None
+
+
+@dataclass(frozen=True)
 class Summary:
     """What a payment is *about*, for someone reading a list of them.
 
-    ``creditor`` is the first transfer's, and ``extra`` counts the ones not
-    shown. A batch has no single recipient, and picking one silently would read
-    as though it did -- so the console renders "and 4 more" rather than a name
-    that is only a seventh of the truth.
+    ``transfers`` is every `CdtTrfTxInf` in the message, in document order.
+    Reading all of them costs the same parse as reading one, and the page that
+    puts a status report beside the payment it answers needs every row rather
+    than the first.
     """
 
     debtor: Party
-    creditor: Party
-    extra: int = 0
+    transfers: tuple[Transfer, ...] = ()
+    payment_information_id: str | None = None
+    execution_date: str | None = None
+
+    @property
+    def creditor(self) -> Party:
+        """The first transfer's, for a list that has room for one name.
+
+        A batch has no single recipient, and picking one silently would read as
+        though it did -- so the console renders "and 4 more" beside this rather
+        than a name that is only a seventh of the truth.
+        """
+        return self.transfers[0].creditor if self.transfers else Party()
+
+    @property
+    def extra(self) -> int:
+        """How many transfers :attr:`creditor` does not name."""
+        return max(len(self.transfers) - 1, 0)
 
     @property
     def batch(self) -> bool:
@@ -60,10 +96,19 @@ class Summary:
 
 
 def _text(node, path: str) -> str | None:
-    found = node.find(path, _NS)
-    if found is None or found.text is None:
+    """The text under ``path``, or ``None`` -- including when ``node`` is None.
+
+    An absent parent is the ordinary case here: a transfer with no structured
+    reference has no `CdtrRefInf` to look under, and the caller asking anyway
+    is what keeps the reading of one flat.
+    """
+    return _own_text(node.find(path, _NS)) if node is not None else None
+
+
+def _own_text(node) -> str | None:
+    if node is None or node.text is None:
         return None
-    return found.text.strip() or None
+    return node.text.strip() or None
 
 
 def summarise(document: bytes | None) -> Summary | None:
@@ -80,20 +125,41 @@ def summarise(document: bytes | None) -> Summary | None:
         payment = root.find(".//p:PmtInf", _NS)
         if payment is None:
             return None
-        transactions = payment.findall("p:CdtTrfTxInf", _NS)
-        first = transactions[0] if transactions else None
-        creditor = Party()
-        if first is not None:
-            creditor = Party(
-                name=_text(first, "p:Cdtr/p:Nm"),
-                iban=_text(first, "p:CdtrAcct/p:Id/p:IBAN"))
         return Summary(
             debtor=Party(name=_text(payment, "p:Dbtr/p:Nm"),
                          iban=_text(payment, "p:DbtrAcct/p:Id/p:IBAN")),
-            creditor=creditor,
-            extra=max(len(transactions) - 1, 0))
+            transfers=tuple(_transfer(node) for node
+                            in payment.findall("p:CdtTrfTxInf", _NS)),
+            payment_information_id=_text(payment, "p:PmtInfId"),
+            execution_date=_text(payment, "p:ReqdExctnDt/p:Dt"))
     except Exception:                                     # noqa: BLE001
         return None
 
 
-__all__ = ["Party", "Summary", "summarise"]
+def _transfer(node) -> Transfer:
+    """One transfer, with the amount left as the digits the document carries.
+
+    ``1234.56`` stays a string all the way to the template, where the locale
+    formatter turns it into something a reader recognises. Parsing it to a
+    float here to "have a number" would put a double between the signed
+    document and the screen, which is the one thing the stored digits exist to
+    prevent.
+    """
+    amount = node.find("p:Amt/p:InstdAmt", _NS)
+    reference = node.find("p:RmtInf/p:Strd/p:CdtrRefInf", _NS)
+    return Transfer(
+        creditor=Party(name=_text(node, "p:Cdtr/p:Nm"),
+                       iban=_text(node, "p:CdtrAcct/p:Id/p:IBAN")),
+        amount=_own_text(amount),
+        currency=amount.get("Ccy") if amount is not None else None,
+        end_to_end_id=_text(node, "p:PmtId/p:EndToEndId"),
+        instruction_id=_text(node, "p:PmtId/p:InstrId"),
+        remittance=_text(node, "p:RmtInf/p:Ustrd"),
+        # `QRR` is proprietary and `SCOR` is an ISO code, so the type is in one
+        # of two elements. Which one it was is not a distinction a reader needs.
+        reference_type=(_text(reference, "p:Tp/p:CdOrPrtry/p:Prtry")
+                        or _text(reference, "p:Tp/p:CdOrPrtry/p:Cd")),
+        reference=_text(reference, "p:Ref"))
+
+
+__all__ = ["Party", "Summary", "Transfer", "summarise"]

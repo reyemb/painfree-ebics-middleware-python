@@ -510,14 +510,26 @@ def status_transaction(status: str, *, end_to_end: str = "E2E-0001",
             "originator": originator}
 
 
+def _restated(number_of_transactions: str | None, control_sum: str | None,
+              *, indent: int) -> list[str]:
+    """The count and the control sum a bank may or may not repeat back."""
+    pad = " " * indent
+    lines = []
+    if number_of_transactions is not None:
+        lines.append(f"{pad}<OrgnlNbOfTxs>{number_of_transactions}</OrgnlNbOfTxs>")
+    if control_sum is not None:
+        lines.append(f"{pad}<OrgnlCtrlSum>{control_sum}</OrgnlCtrlSum>")
+    return lines
+
+
 def payment_status(original_msg_id: str, *, report_id: str = "STSRPT-0001",
                    group_status: str | None = "ACSP",
                    payment_status: str | None = None,
                    transactions: tuple = (),
                    reason_code: str | None = None,
                    reason_text: str | None = None,
-                   number_of_transactions: str = "1",
-                   control_sum: str = "3949.75",
+                   number_of_transactions: str | None = "1",
+                   control_sum: str | None = "3949.75",
                    created_at: str = "2026-08-29T08:00:00Z") -> bytes:
     """One `pain.002.001.10` answering ``original_msg_id``.
 
@@ -534,8 +546,10 @@ def payment_status(original_msg_id: str, *, report_id: str = "STSRPT-0001",
         f"      <OrgnlMsgId>{original_msg_id}</OrgnlMsgId>",
         "      <OrgnlMsgNmId>pain.001.001.09</OrgnlMsgNmId>",
         "      <OrgnlCreDtTm>2026-08-28T17:42:11Z</OrgnlCreDtTm>",
-        f"      <OrgnlNbOfTxs>{number_of_transactions}</OrgnlNbOfTxs>",
-        f"      <OrgnlCtrlSum>{control_sum}</OrgnlCtrlSum>",
+        # Both are optional in `OriginalGroupHeader17`, and a bank that sends
+        # neither is not hypothetical: it is the shape of the reports this
+        # deployment gets. `None` leaves the element out.
+        *_restated(number_of_transactions, control_sum, indent=6),
     ]
     if group_status is not None:
         lines.append(f"      <GrpSts>{group_status}</GrpSts>")
@@ -544,8 +558,7 @@ def payment_status(original_msg_id: str, *, report_id: str = "STSRPT-0001",
     if transactions or payment_status is not None:
         lines += ["    <OrgnlPmtInfAndSts>",
                   "      <OrgnlPmtInfId>PMTINF-0001</OrgnlPmtInfId>",
-                  f"      <OrgnlNbOfTxs>{number_of_transactions}</OrgnlNbOfTxs>",
-                  f"      <OrgnlCtrlSum>{control_sum}</OrgnlCtrlSum>"]
+                  *_restated(number_of_transactions, control_sum, indent=6)]
         if payment_status is not None:
             lines.append(f"      <PmtInfSts>{payment_status}</PmtInfSts>")
         for index, one in enumerate(transactions, start=1):

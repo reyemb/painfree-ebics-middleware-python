@@ -79,3 +79,58 @@ def test_a_document_with_no_transactions_still_names_the_debtor():
     summary = summarise(document)
     assert summary is not None
     assert summary.debtor.iban == "CH5604835012345678009"
+
+
+def test_every_transfer_comes_back_with_the_key_a_bank_answers_by():
+    """A status report names `E2E-0002`, so the reader has to hold that key.
+
+    The whole message, not the first transfer: the page that puts a bank's
+    verdict beside the payment it is about needs a row per transfer, and the
+    row is found by its end-to-end reference.
+    """
+    summary = summarise(_document(3))
+    assert summary is not None
+    assert len(summary.transfers) == 3
+    assert summary.payment_information_id == "PMT-1"
+    assert summary.execution_date == "2026-09-30"
+    second = summary.transfers[1]
+    assert second.creditor.name == "Robert Schneider AG 1"
+    assert second.creditor.iban == "CH4821966000009613388"
+    assert second.remittance == "Invoice 1"
+    # The digits the document carries, unparsed. A float here would be a
+    # double between the signed message and the screen.
+    assert second.amount == "42.00" and isinstance(second.amount, str)
+    assert second.currency == "CHF"
+    assert second.end_to_end_id
+
+
+def test_a_structured_reference_comes_back_whichever_element_carried_it():
+    """`QRR` is proprietary and `SCOR` is an ISO code. A reader wants neither fact."""
+    instruction = payments.PaymentInstruction.model_validate({
+        "debtor": {"name": "MUSTER AG"},
+        "debtor_iban": "CH5604835012345678009",
+        "requested_execution_date": "2026-09-30",
+        "transactions": [
+            {"amount": "3949.75", "currency": "CHF",
+             "creditor": {"name": "Robert Schneider AG"},
+             "creditor_iban": "CH4431999123000889012",
+             "instruction_id": "INSTR-0001",
+             "end_to_end_id": "E2E-0001",
+             "reference": {"type": "QRR",
+                           "reference": "210000000003139471430009017"}},
+        ],
+    })
+    document = pain001.build(
+        instruction, message_id="MSG-2", payment_information_id="PMT-2",
+        created_at=_dt.datetime(2026, 9, 3, 12, 0, tzinfo=_dt.timezone.utc))
+    transfer = summarise(document).transfers[0]
+    assert transfer.reference_type == "QRR"
+    assert transfer.reference == "210000000003139471430009017"
+    assert transfer.instruction_id == "INSTR-0001"
+    assert transfer.end_to_end_id == "E2E-0001"
+
+
+def test_a_transfer_with_no_remittance_and_no_reference_reads_as_absent():
+    """Absent is `None`, so a template can ask once and show a dash."""
+    transfer = summarise(_document()).transfers[0]
+    assert transfer.reference is None and transfer.reference_type is None

@@ -37,7 +37,7 @@ import json
 import re
 import uuid
 from dataclasses import dataclass
-from typing import Any, Sequence
+from typing import Any, Iterable, Sequence
 
 from sqlalchemy import Engine, select
 from sqlalchemy.exc import IntegrityError
@@ -48,7 +48,7 @@ from painfree.audit import FAILURE, Actor, AuditLog, SYSTEM_ACTOR
 from painfree.connections import ConnectionRegistry
 from painfree.errors import ConflictError, NotFoundError
 from painfree.logging import bind, get_logger
-from painfree.schema import payment_order
+from painfree.schema import payment_attempt, payment_order
 from painfree.schemes import PaymentScheme, SchemeDecision
 
 log = get_logger("painfree.orders")
@@ -671,6 +671,40 @@ class OrderStore:
         does not fetch a hundred documents: an attempt row carries the message.
         """
         return self._attempts.all(order_id)
+
+    def by_message_ids(self, connection_id: str,
+                       msg_ids: Iterable[str]) -> dict[str, str]:
+        """`MsgId` to order id, for the messages this connection sent.
+
+        One query for a whole page of statement entries, which is the point:
+        an entry naming a `MsgId` this service generated is that payment
+        settling, and asking per entry would be a query per row.
+
+        Attempts are included for the reason
+        :meth:`painfree.reconcile.StatusReconciler.order_for` includes them: an
+        order that fell back sent one message under a `MsgId` it no longer
+        carries, and a booking naming it is still about this order. The join is
+        scoped to the connection, so one bank's statement cannot attribute a
+        booking to another bank's order.
+        """
+        wanted = [msg_id for msg_id in msg_ids if msg_id]
+        if not wanted:
+            return {}
+        found: dict[str, str] = {}
+        with self._engine.connect() as connection:
+            for row in connection.execute(
+                    select(payment_order.c.msg_id, payment_order.c.order_id)
+                    .where(payment_order.c.connection_id == connection_id,
+                           payment_order.c.msg_id.in_(wanted))).all():
+                found[row[0]] = row[1]
+            for row in connection.execute(
+                    select(payment_attempt.c.msg_id, payment_attempt.c.order_id)
+                    .join(payment_order,
+                          payment_order.c.order_id == payment_attempt.c.order_id)
+                    .where(payment_order.c.connection_id == connection_id,
+                           payment_attempt.c.msg_id.in_(wanted))).all():
+                found.setdefault(row[0], row[1])
+        return found
 
     def get(self, order_id: str) -> PaymentOrder:
         with self._engine.connect() as connection:

@@ -30,7 +30,7 @@ from painfree.schema import (audit_log, bank_connection, key_material,
                              payment_order)
 from painfree.statements import StatementStore
 from tests.conftest import (BANK_CONNECTION_ID, dev_credentials, fixture_bytes,
-                            grant, payment_body)
+                            grant, payment_body, transfer)
 
 BROWSER = {"accept": "text/html,application/xhtml+xml"}
 
@@ -408,6 +408,57 @@ def test_a_statement_page_shows_the_normalised_json_and_the_list_does_not(consol
     assert "&#34;entries&#34;" in page.text or "\"entries\"" in page.text
 
 
+def test_an_account_statement_is_drawn_as_an_account_statement(console):
+    """Two amount columns, a running balance, and a check that it adds up.
+
+    The balance column is this console's arithmetic: no `camt` message carries
+    one. The check against the closing balance the bank stated is what makes
+    showing it defensible.
+    """
+    client, engine, _ = console
+    statement_id = StatementStore(engine).ingest(
+        BANK_CONNECTION_ID, [fixture_bytes("camt.053.001.08")]).statement_ids[0]
+
+    page = client.get(f"/ui/statements/{statement_id}", headers=_admin())
+    assert page.status_code == 200
+    assert "Money in" in page.text and "Money out" in page.text
+    # Opening 1000.00, one debit of 3949.75, two credits of 0.10 and 0.20.
+    # Every running figure, and the closing balance they have to reach.
+    for figure in ("1,000.00", "-2,949.75", "-2,949.65", "-2,949.45"):
+        assert figure in page.text, figure
+    assert "The entries add up to the closing balance" in page.text
+    assert "Robert Schneider AG" in page.text and "Bernasconi SA" in page.text
+    assert "Normalised JSON" in page.text
+
+
+def test_a_statement_entry_that_settles_our_payment_links_to_the_order(console):
+    """The last link of the chain: the report said taken, this says booked."""
+    client, engine, _ = console
+    order = _submit(client, "console-booked").json()
+    # The fixture books a payment under a `MsgId` of its own. Give it ours, so
+    # the entry is one this deployment sent rather than one it merely holds.
+    document = fixture_bytes("camt.053.001.08").replace(
+        b"PF3868D16485F403EA96B3AF3B78F98E6", order["msg_id"].encode())
+    statement_id = StatementStore(engine).ingest(
+        BANK_CONNECTION_ID, [document]).statement_ids[0]
+
+    page = client.get(f"/ui/statements/{statement_id}", headers=_admin())
+    assert page.status_code == 200
+    assert "Our payment" in page.text
+    assert f'/ui/orders/{order["order_id"]}' in page.text
+    # And the filter that shows only those exists once there is one.
+    assert "?show=ours" in page.text
+
+    only_ours = client.get(f"/ui/statements/{statement_id}?show=ours",
+                           headers=_admin())
+    # Above the normalised payload, which is the whole document either way.
+    ledger = only_ours.text.split('<details class="card">')[0]
+    assert "Robert Schneider AG" in ledger
+    assert "Bernasconi SA" not in ledger, "the credits are filtered out"
+    # The balance column is still the account's, not the filter's.
+    assert "-2,949.75" in ledger
+
+
 def test_an_order_shows_the_banks_status_report_and_links_to_it(console):
     """The two directions of the join, both rendered, neither quoting a payment."""
     from tests.conftest import payment_status, valid_payment_status
@@ -442,6 +493,142 @@ def test_an_order_shows_the_banks_status_report_and_links_to_it(console):
 
     report = client.get(f"/ui/statements/{statement_id}", headers=_admin())
     assert order["order_id"] in report.text, "the statement links back"
+
+
+def test_the_index_is_split_because_it_holds_two_kinds_of_document(console):
+    """One table with both would have a closing balance column half empty."""
+    from tests.conftest import payment_status, valid_payment_status
+
+    client, engine, _ = console
+    order = _submit(client, "console-index").json()
+    StatementStore(engine).ingest(
+        BANK_CONNECTION_ID,
+        [fixture_bytes("camt.053.001.08"),
+         valid_payment_status(payment_status(order["msg_id"],
+                                             group_status="ACSP"))])
+
+    accounts = client.get("/ui/statements", headers=_admin())
+    assert accounts.status_code == 200
+    assert "CH5604835012345678009" in accounts.text
+    assert "camt.053.001.08" in accounts.text
+    assert "pain.002" not in accounts.text.split("<table")[1], \
+        "a status report is not an account statement"
+
+    responses = client.get("/ui/statements?family=response", headers=_admin())
+    assert responses.status_code == 200
+    # What the bank said, and which order it said it about.
+    assert "ACSP" in responses.text
+    assert "AcceptedSettlementInProcess" in responses.text
+    assert order["order_id"] in responses.text
+    # Still no entry content on an index, and no money either.
+    assert "Robert Schneider AG" not in responses.text
+    assert "3,949.75" not in responses.text
+
+
+def test_a_status_report_is_read_against_the_payment_it_answers(console):
+    """The rows are the message's, the verdict is the bank's, and both are said.
+
+    A page rendered from the report alone would show two statuses and no money.
+    The transfers come from the stored `pain.001`, so the amount that was
+    refused is on the screen beside the reason it was refused for.
+    """
+    from tests.conftest import PLAIN_IBAN, payment_status, valid_payment_status
+    from painfree.queue import OrderQueue
+
+    client, engine, _ = console
+    order = client.post(
+        f"/v1/connections/{BANK_CONNECTION_ID}/payments",
+        headers={**_admin(), "Idempotency-Key": "console-answers"},
+        json=payment_body(transactions=[
+            transfer(end_to_end_id="E2E-0001"),
+            transfer(end_to_end_id="E2E-0002", amount="250.00",
+                     creditor_iban=PLAIN_IBAN, reference={"type": "NONE"},
+                     creditor={"name": "Muster Handels AG",
+                               "postal_address": {"town": "Biel",
+                                                  "country": "CH"}}),
+        ])).json()
+    OrderQueue(engine).submitted(order["order_id"], bank_order_id="N01A",
+                                 return_code="000000", report_text="OK")
+    statement_id = StatementStore(engine).ingest(
+        BANK_CONNECTION_ID,
+        [valid_payment_status(payment_status(
+            order["msg_id"], group_status="PART", payment_status="ACCP",
+            number_of_transactions="2", control_sum="4199.75",
+            transactions=(
+                _status("ACSP"),
+                _status("RJCT", end_to_end="E2E-0002", amount="250.00",
+                        reason_code="AC01",
+                        reason_text="Creditor account number invalid")),
+        ))]).statement_ids[0]
+
+    page = client.get(f"/ui/statements/{statement_id}", headers=_admin())
+    assert page.status_code == 200
+    # Both halves of the table, and the boundary between them named.
+    assert "What we sent" in page.text and "What the bank said" in page.text
+    assert "Robert Schneider AG" in page.text
+    assert "Muster Handels AG" in page.text
+    # The money the bank refused, which is in the message and not in the report
+    # this page could have been rendered from alone.
+    assert "250.00" in page.text and "3,949.75" in page.text
+    assert "ACSP" in page.text and "RJCT" in page.text
+    assert "AC01" in page.text
+    assert "Creditor account number invalid" in page.text
+    # The group status decided the order, and the page says which level did.
+    assert "PART" in page.text and "decides the order" in page.text
+    assert order["order_id"] in page.text
+
+
+def test_a_status_report_that_names_nothing_still_answers_every_payment(console):
+    """The ordinary case: the bank took the file and named no transaction.
+
+    This is the page that used to be thirteen nulls. Every transfer is
+    answered, from the level the bank actually spoke at, and the page says so
+    rather than letting `ACCP` read as a verdict on each payment.
+    """
+    from tests.conftest import payment_status, valid_payment_status
+
+    client, engine, _ = console
+    order = client.post(
+        f"/v1/connections/{BANK_CONNECTION_ID}/payments",
+        headers={**_admin(), "Idempotency-Key": "console-silent"},
+        json=payment_body(transactions=[transfer(end_to_end_id="E2E-0001")])).json()
+    statement_id = StatementStore(engine).ingest(
+        BANK_CONNECTION_ID,
+        # The report this deployment actually gets: a group status, and not
+        # one field more. No count, no control sum, no payment block, no
+        # transaction. Every amount on the page below comes from our message.
+        [valid_payment_status(payment_status(
+            order["msg_id"], group_status="ACCP",
+            number_of_transactions=None, control_sum=None))]
+    ).statement_ids[0]
+
+    page = client.get(f"/ui/statements/{statement_id}", headers=_admin())
+    assert page.status_code == 200
+    assert "The bank accepted the file" in page.text
+    assert "Robert Schneider AG" in page.text and "3,949.75" in page.text
+    assert "ACCP" in page.text
+    # Said at the group level, and marked as such rather than shown as though
+    # the bank had answered about this payment.
+    assert "from the whole message" in page.text
+    assert "not reported" in page.text, "the two silent levels say so"
+    assert "The bank restated neither" in page.text
+    # The normalised document is still reachable, and is no longer the page.
+    assert "Normalised JSON" in page.text
+
+
+def test_a_report_that_answers_no_order_says_so_rather_than_showing_nothing(console):
+    from tests.conftest import payment_status, valid_payment_status
+
+    client, engine, _ = console
+    statement_id = StatementStore(engine).ingest(
+        BANK_CONNECTION_ID,
+        [valid_payment_status(payment_status("PF-NOBODY-SENT-THIS",
+                                             group_status="RJCT"))]
+    ).statement_ids[0]
+    page = client.get(f"/ui/statements/{statement_id}", headers=_admin())
+    assert page.status_code == 200
+    assert "The bank refused the file" in page.text
+    assert "answers no order here" in page.text
 
 
 def test_the_status_code_page_is_the_mapping_the_reconciler_uses(console):
@@ -644,3 +831,4 @@ def test_the_avatar_takes_one_letter_per_name(console):
     assert _initials("2db0ebe3-cb34-4c1e") == "2D"
     for empty in ("", "   ", None):
         assert _initials(empty) == "?"
+

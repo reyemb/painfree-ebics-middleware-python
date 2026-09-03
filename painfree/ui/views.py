@@ -33,6 +33,7 @@ token this module would have to remember to check.
 from __future__ import annotations
 
 import datetime as _dt
+import decimal
 import urllib.parse
 import uuid
 from typing import Any
@@ -53,7 +54,9 @@ from painfree.logging import bind
 from painfree.orders import REPLAYABLE, OrderState, OrderStore
 from painfree.painread import summarise
 from painfree.schemes import DEFAULT_INSTANT, PaymentScheme
+from painfree.statements import ACCOUNTS, FAMILIES, RESPONSES
 from painfree.schedule import DownloadSchedules
+from painfree.ui import ledger
 from painfree.ui.rendering import render
 from painfree.ui.scheme_forms import scheme_rows, schemes_from
 from painfree.webhooks import WebhookSubscriptions
@@ -695,23 +698,44 @@ def replay_order(
 
 @router.get("/statements")
 def statements(request: Request, connection_id: str = "", message_type: str = "",
+               family: str = ACCOUNTS,
                principal: Principal = Depends(requires(Scope.statements_read))):
+    """The index, in two halves, because it holds two kinds of document.
+
+    An account statement is read for its closing balance and an entry count; a
+    status report is read for what the bank said about a payment. One table
+    with the union of both columns is a table half of whose cells are empty on
+    every row, which is what this used to be.
+    """
     store = request.app.state.statements
     allowed, possible = access.restrict(principal, connection_id or None)
+    family = family if family in FAMILIES else ACCOUNTS
+    rows = []
+    if possible and family == RESPONSES:
+        rows = store.responses(connection_ids=allowed,
+                               message_type=message_type or None, limit=100)
+    elif possible:
+        rows = store.recent(connection_ids=allowed, family=ACCOUNTS,
+                            message_type=message_type or None, limit=100)
     return render(request, "statements.html",
-                  statements=store.recent(connection_ids=allowed,
-                                          message_type=message_type or None,
-                                          limit=100) if possible else [],
+                  statements=rows, family=family,
                   connections=access.held(principal, _registry(request).all()),
                   message_types=store.message_types(),
+                  status_codes=reconcile.STATUS_CODES,
                   selected_connection=connection_id,
                   selected_type=message_type)
 
 
 @router.get("/statements/{statement_id}")
-def statement(request: Request, statement_id: str,
+def statement(request: Request, statement_id: str, show: str = "all",
               principal: Principal = Depends(requires(Scope.statements_read))):
-    """One statement and its normalised JSON, exactly as it is stored."""
+    """One document, rendered as the kind of document it is.
+
+    A `camt` statement and a `pain.002` answer share a table and nothing else.
+    One is an account's own history and is read as a ledger; the other is the
+    bank answering a payment this service sent and is only legible *against*
+    that payment. Two templates, chosen by what the document is.
+    """
     row = request.app.state.statements.get(statement_id)
     if row is None:
         raise NotFoundError(f"no such statement: {statement_id!r}")
@@ -719,7 +743,111 @@ def statement(request: Request, statement_id: str,
     # only thing standing between a member and another bank's balances.
     access.require(principal, row["connection_id"], Scope.statements_read,
                    what="statement")
-    return render(request, "statement.html", statement=row)
+    payload = row["payload"] or {}
+    if payload.get("kind") == reconcile.PAYMENT_STATUS:
+        return _status_report(request, row, payload, principal)
+    return _account_statement(request, row, payload, principal, show)
+
+
+def _account_statement(request: Request, row: dict[str, Any],
+                       payload: dict[str, Any], principal: Principal, show: str):
+    """A `camt` statement, drawn as a statement.
+
+    The entries are already in the payload; what this adds is the running
+    balance, which no bank sends, and the link from an entry back to the order
+    it settles. That link is the last one in the chain: a `pain.002` says the
+    bank took the payment, and a booking here says the money left the account.
+
+    Resolving it needs `payments:read` on the connection. Without it the
+    entries are all still shown; what is missing is the sentence saying which
+    of them are ours, which is a payment fact rather than a statement one.
+    """
+    orders = {}
+    if principal.may(Scope.payments_read, row["connection_id"]):
+        orders = _orders(request).by_message_ids(row["connection_id"],
+                                                 ledger.message_ids(payload))
+    book = ledger.read(payload, opening=row["opening_balance"],
+                       closing=row["closing_balance"], orders=orders)
+    show = show if show in ledger.SHOWS else "all"
+    return render(request, "statement_account.html", statement=row,
+                  payload=payload, ledger=book, lines=book.showing(show),
+                  show=show)
+
+
+def _status_report(request: Request, row: dict[str, Any],
+                   payload: dict[str, Any], principal: Principal):
+    """A `pain.002`, read against the `pain.001` it answers.
+
+    **The rows are the payment's, not the report's.** A bank reports by
+    exception: the report for a file it took whole names no transaction at all,
+    and rendering what it carries would be an empty page for the ordinary case.
+    So the transfers come from the message this service sent and the report
+    annotates them, carrying the level each answer was read at.
+
+    Reading the payment needs `payments:read` on the connection, which reading
+    statements does not imply. A grant level carries both, so this separates
+    nothing for an ordinary operator; it covers a caller whose token narrowed
+    itself to `statements:read`. Without the scope the page still renders what
+    the report says, and the transfers are absent rather than the page refused.
+    """
+    report = reconcile.reading(payload)
+    sees_payment = principal.may(Scope.payments_read, row["connection_id"])
+    order = payment = None
+    if row["order_id"] and sees_payment:
+        order = _orders(request).get(row["order_id"])
+        payment = summarise(order.document)
+    transfers = payment.transfers if payment else ()
+    block = payment.payment_information_id if payment else None
+    answers = [(transfer, report.for_transfer(transfer.end_to_end_id,
+                                              transfer.instruction_id, block))
+               for transfer in transfers]
+    return render(
+        request, "statement_response.html", statement=row, order=order,
+        payment=payment, sees_payment=sees_payment,
+        answers=answers, totals=_money_by_currency(answers),
+        # References the report names that the message does not carry. Empty
+        # for every report that is about what it says it is about, and asked
+        # only when the message is in hand: without it every reference the
+        # report names would look like one we never sent.
+        unsent=report.unsent(reference for transfer in transfers
+                             for reference in (transfer.end_to_end_id,
+                                               transfer.instruction_id))
+        if payment else (),
+        report=report, outcome=reconcile.resolve(payload),
+        original=payload.get("original") or {},
+        status_codes=reconcile.STATUS_CODES)
+
+
+def _money_by_currency(answers: list[tuple[Any, Any]]) -> list[dict[str, Any]]:
+    """How much of the message the bank took and how much it refused.
+
+    **Per currency**, because one message may carry more than one and adding
+    two currencies produces a number that is not money. In :class:`Decimal`,
+    from the digits the document carries, for the reason every amount in this
+    service is exact rather than fast.
+
+    A transfer whose amount will not parse is counted and not added. It is a
+    display path: a stored message from an older build must not be able to take
+    the page down (``painfree.painread``).
+    """
+    totals: dict[str, dict[str, Any]] = {}
+    for transfer, answer in answers:
+        row = totals.setdefault(transfer.currency or "", {
+            "currency": transfer.currency, "count": 0,
+            "sent": decimal.Decimal(0),
+            "refused_count": 0, "refused": decimal.Decimal(0)})
+        row["count"] += 1
+        try:
+            amount = decimal.Decimal(transfer.amount or "0")
+        except decimal.InvalidOperation:
+            amount = None
+        if amount is not None:
+            row["sent"] += amount
+        if answer.refused:
+            row["refused_count"] += 1
+            if amount is not None:
+                row["refused"] += amount
+    return list(totals.values())
 
 
 # --- download schedules -----------------------------------------------------

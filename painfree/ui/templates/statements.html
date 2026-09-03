@@ -1,10 +1,22 @@
 {% extends "base.html" %}
+{% import "_bank.html" as bank with context %}
 {% block title %}{{ t('statements.title') }} — painfree{% endblock %}
 {% block body %}
 <h1>{{ t('statements.heading') }}</h1>
 <p class="lede">{{ t('statements.lede') }}</p>
 
+{# Two halves rather than two pages: they arrive from the same schedules and an
+   operator looking for "did anything come back" wants one place to look. The
+   columns are different because the questions are. #}
+{% set filters = ('&connection_id=' ~ selected_connection if selected_connection else '')
+                 ~ ('&message_type=' ~ selected_type if selected_type else '') %}
+<p class="filters shows">
+  <a href="?family=account{{ filters }}"{% if family == 'account' %} aria-current="page"{% endif %}>{{ t('statements.tab_accounts') }}</a>
+  <a href="?family=response{{ filters }}"{% if family == 'response' %} aria-current="page"{% endif %}>{{ t('statements.tab_responses') }}</a>
+</p>
+
 <form class="filters" method="get" action="/ui/statements">
+  <input type="hidden" name="family" value="{{ family }}">
   <div><label for="connection_id">{{ t('common.connection') }}</label>
     <select id="connection_id" name="connection_id">
       <option value="">{{ t('common.every_connection') }}</option>
@@ -23,27 +35,62 @@
 </form>
 
 <div class="card">
-{% if statements %}
+{% if not statements %}
+<p class="empty">{{ t('statements.empty') }}</p>
+
+{% elif family == 'response' %}
+{# What the bank said, and about which order. No amount and no counterparty:
+   the index is held to the rule the webhook envelope is, and the money is one
+   click away on the report itself. #}
 <table>
-  <tr><th>{{ t('statements.statement') }}</th><th>{{ t('statements.type') }}</th>
-      <th>{{ t('statements.account') }}</th><th>{{ t('statements.reports_on') }}</th>
-      <th>{{ t('statements.entries') }}</th><th>{{ t('statements.closing_balance') }}</th>
-      <th>{{ t('order.ingested') }}</th></tr>
+  <tr><th>{{ t('statements.reports_on') }}</th><th>{{ t('order.status') }}</th>
+      <th class="num">{{ t('order.accepted_count') }}</th>
+      <th class="num">{{ t('order.rejected_count') }}</th>
+      <th>{{ t('order.reason') }}</th><th>{{ t('response.received') }}</th></tr>
   {% for row in statements %}
+  {% set code = status_codes.get(row.outcome.status or '') %}
   <tr>
-    <td><a href="/ui/statements/{{ row.statement_id }}"><code>{{ row.statement_id }}</code></a><br>
-        <small class="mono">{{ row.identification or '—' }}</small></td>
-    <td>{{ row.message_type }}</td>
-    <td class="mono">{{ row.iban or '—' }}</td>
-    <td>{% if row.order_id %}<a href="/ui/orders/{{ row.order_id }}"><code>{{ row.order_id }}</code></a>{% else %}—{% endif %}</td>
-    <td>{{ row.entry_count | count }}</td>
-    <td>{% if row.closing_balance is not none %}{{ row.closing_balance | amount(row.currency) }}{% else %}—{% endif %}</td>
+    <td>{% if row.order_id %}<a href="/ui/statements/{{ row.statement_id }}"><code>{{ row.order_id }}</code></a>
+        {% else %}<span class="tag failed">{{ t('response.unmatched_heading') }}</span>{% endif %}
+        <br><small><a href="/ui/statements/{{ row.statement_id }}"><code>{{ row.statement_id }}</code></a></small></td>
+    <td>{% if row.outcome.status %}
+        <span class="tag {% if code and code.disposition in ('accepts', 'partial') %}acknowledged{% elif code and code.disposition == 'refuses' %}rejected{% else %}created{% endif %}">{{ row.outcome.status }}</span>
+        <br><small>{{ code.name if code else t('response.unknown_status') }}</small>
+        {% else %}<span class="silent">{{ t('response.not_reported') }}</span>{% endif %}</td>
+    <td class="num">{{ row.outcome.accepted | count }}</td>
+    <td class="num">{{ row.outcome.rejected | count }}</td>
+    <td>{% if row.outcome.reason_code %}<code>{{ row.outcome.reason_code }}</code> {% endif %}
+        {{ bank.quiet(row.outcome.reason_text) }}</td>
     <td>{{ row.ingested_at | moment }}</td>
   </tr>
   {% endfor %}
 </table>
+
 {% else %}
-<p class="empty">{{ t('statements.empty') }}</p>
+{# An account and its balances. The statement id is how the service names the
+   row and matters once you already have the right one, so it is not what the
+   eye lands on. #}
+<table>
+  <tr><th>{{ t('statements.account') }}</th><th>{{ t('statement.period') }}</th>
+      <th class="num">{{ t('statements.closing_balance') }}</th>
+      <th>{{ t('statements.entries') }}</th>
+      <th>{{ t('statements.type') }}</th><th>{{ t('order.ingested') }}</th></tr>
+  {% for row in statements %}
+  <tr>
+    <td><a href="/ui/statements/{{ row.statement_id }}"><code>{{ row.iban or '—' }}</code></a>
+        {% if row.currency %}{{ row.currency }}{% endif %}
+        <br><small><code>{{ row.connection_id }}</code>
+          <code>{{ row.statement_id }}</code></small></td>
+    <td>{% if row.from_datetime %}{{ row.from_datetime | day }} &rarr; {{ row.to_datetime | day }}
+        {% else %}{{ row.ingested_at | day }}{% endif %}
+        {% if row.sequence_number %}<br><small>{{ t('statement.sequence') }} {{ row.sequence_number }}</small>{% endif %}</td>
+    <td class="num">{% if row.closing_balance is not none %}{{ row.closing_balance | amount(row.currency) }}{% else %}—{% endif %}</td>
+    <td>{{ row.entry_count | count }}</td>
+    <td>{{ row.message_type }}</td>
+    <td>{{ row.ingested_at | moment }}</td>
+  </tr>
+  {% endfor %}
+</table>
 {% endif %}
 </div>
 {% endblock %}

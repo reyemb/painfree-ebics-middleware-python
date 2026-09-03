@@ -1,0 +1,76 @@
+{# One entry of an account statement, and its drawer.
+
+   A `<details>` is the whole disclosure mechanism: a real button for a
+   keyboard and a screen reader without anybody writing `role`, `tabindex` and
+   an Escape handler, and it works with scripting off, which is the rule for
+   everything in this console except the theme toggle.
+
+   In a file of its own because a macro defined in a template that `extends`
+   another is not reliably in scope inside its blocks. #}
+{% macro row(line, running) %}
+<tr>
+  <td>{{ line.entry.get('booking_date') | day }}</td>
+  <td>{{ line.entry.get('value_date') | day }}</td>
+  <td>
+    <details>
+      <summary>
+        {%- set party = line.counterparty %}
+        {{ (party.get('name') if party else none) or line.description or line.entry.get('reference') or '—' }}
+        {% if line.order_id %}<span class="tag acknowledged">{{ t('account.our_payment') }}</span>{% endif %}
+        {% if line.entry.get('reversal') %}<span class="tag failed">{{ t('account.reversal') }}</span>{% endif %}
+        {# What the entry is about, on the closed row. A statement whose rows
+           name only a counterparty is a statement an operator has to open
+           every line of. #}
+        {% if party and line.description %}<br><small>{{ line.description }}</small>{% endif %}
+      </summary>
+      <table class="plain">
+        <tr><td>{{ t('account.entry_reference') }}</td>
+            <td><code>{{ line.entry.get('reference') or '—' }}</code>
+              {% if line.entry.get('account_servicer_reference') %}
+              <code>{{ line.entry.get('account_servicer_reference') }}</code>{% endif %}</td></tr>
+        {% set code = line.entry.get('bank_transaction_code') or {} %}
+        {% if code.get('domain') or code.get('proprietary') %}
+        <tr><td>{{ t('account.transaction_code') }}</td>
+            <td><code>{{ code.get('proprietary') or (code.get('domain') ~ ' / ' ~ (code.get('family') or '') ~ ' / ' ~ (code.get('sub_family') or '')) }}</code></td></tr>
+        {% endif %}
+        {% if line.entry.get('additional_information') %}
+        <tr><td>{{ t('account.additional') }}</td><td>{{ line.entry.get('additional_information') }}</td></tr>
+        {% endif %}
+        {% if line.order_id %}
+        <tr><td>{{ t('account.our_payment') }}</td>
+            <td><a href="/ui/orders/{{ line.order_id }}"><code>{{ line.order_id }}</code></a></td></tr>
+        {% endif %}
+      </table>
+      {# One entry may collect many transactions. A payroll run is one line in
+         the ledger and two hundred here, which is what the drawer is for. #}
+      {% if line.entry.get('transactions') %}
+      <table>
+        <tr><th>{{ t('account.counterparty') }}</th><th class="num">{{ t('order.amount') }}</th>
+            <th>{{ t('account.end_to_end') }}</th><th>{{ t('account.remittance') }}</th></tr>
+        {% for transaction in line.entry.get('transactions') %}
+        <tr>
+          <td>{% set other = transaction.get('counterparty') or {} %}
+              {{ other.get('name') or '—' }}
+              {% if other.get('iban') %}<br><code>{{ other.get('iban') }}</code>{% endif %}
+              {% if other.get('bic') %}<br><code>{{ other.get('bic') }}</code>{% endif %}</td>
+          <td class="num">{{ transaction.get('amount') | amount(transaction.get('currency')) }}
+              {% if transaction.get('instructed_amount') %}<br><small>{{ transaction.get('instructed_amount').get('amount') | amount(transaction.get('instructed_amount').get('currency')) }}</small>{% endif %}</td>
+          <td>{% if transaction.get('end_to_end_id') %}<code>{{ transaction.get('end_to_end_id') }}</code>{% endif %}
+              {% if transaction.get('instruction_id') %}<br><small><code>{{ transaction.get('instruction_id') }}</code></small>{% endif %}
+              {% if transaction.get('message_identification') %}
+              <br><small class="hint">{{ t('account.our_message') }}
+                <code>{{ transaction.get('message_identification') }}</code></small>{% endif %}</td>
+          <td>{{ transaction.get('remittance_information') or transaction.get('additional_information') or '—' }}
+              {% set reference = transaction.get('reference') or {} %}
+              {% if reference.get('reference') %}<br><small><code>{{ reference.get('type') }} {{ reference.get('reference') }}</code></small>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </table>
+      {% endif %}
+    </details>
+  </td>
+  <td class="num">{% if not line.credit %}{{ line.amount | amount(line.entry.get('currency')) }}{% endif %}</td>
+  <td class="num">{% if line.credit %}{{ line.amount | amount(line.entry.get('currency')) }}{% endif %}</td>
+  <td class="num">{% if running and line.balance is not none %}{{ line.balance | amount(line.entry.get('currency')) }}{% endif %}</td>
+</tr>
+{% endmacro %}

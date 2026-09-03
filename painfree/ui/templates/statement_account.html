@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% import "_ledger.html" as ledger_row with context %}
+{% block title %}{{ statement.identification or statement.statement_id }} — painfree{% endblock %}
+{% block body %}
+{# An account statement, drawn the way an account statement has been drawn for
+   a century: two amount columns, a running balance, and the entries in the
+   order the bank sent them.
+
+   Debit and credit are the payload's `credit_debit` turned back into the two
+   columns it came from, rather than into a signed number. The balance column
+   is arithmetic this console does (`painfree.ui.ledger`), and it says so:
+   no `camt` message carries one. #}
+{% set account = payload.get('account') or {} %}
+
+<h1>{{ account.get('owner') or account.get('iban') or statement.statement_id }}</h1>
+<p class="lede">
+  {% if account.get('iban') %}<code>{{ account.get('iban') }}</code> &middot; {% endif %}
+  {%- if account.get('currency') %}{{ account.get('currency') }} &middot; {% endif %}
+  {%- if account.get('servicer_bic') %}<code>{{ account.get('servicer_bic') }}</code>{% endif %}
+  <br>
+  {{ statement.message_type }},
+  {%- if payload.get('kind') == 'report' %} {{ t('account.kind_report') }}
+  {%- elif payload.get('kind') == 'notification' %} {{ t('account.kind_notification') }}
+  {%- else %} {{ t('account.kind_statement') }}{% endif %}
+  &middot; {{ t('statements.entry_count', count=statement.entry_count) }}
+  {%- if statement.from_datetime %}
+  <br>{{ statement.from_datetime | moment }} &rarr; {{ statement.to_datetime | moment }}
+  {%- endif %}
+</p>
+
+{# The four figures a statement is read for, and the one check worth doing on
+   them. `reconciles` is exact: the arithmetic is decimal, over the digits the
+   bank sent, against the closing balance the bank stated. #}
+<div class="card">
+<table class="plain">
+  <tr><td>{{ t('statement.opening_balance') }}</td>
+      <td class="num">{{ statement.opening_balance | amount(statement.currency) }}</td></tr>
+  <tr><td>{{ t('account.money_in') }}</td>
+      <td class="num">{{ ledger.credited | amount(statement.currency) }}
+        <span class="hint">{{ ledger.credits | count }}</span></td></tr>
+  <tr><td>{{ t('account.money_out') }}</td>
+      <td class="num">{{ ledger.debited | amount(statement.currency) }}
+        <span class="hint">{{ ledger.debits | count }}</span></td></tr>
+  <tr><td>{{ t('statements.closing_balance') }}</td>
+      <td class="num">{{ statement.closing_balance | amount(statement.currency) }}</td></tr>
+</table>
+<p class="hint">
+  {%- if ledger.reconciles %}{{ t('account.reconciles') }}
+  {%- elif ledger.reconciles is none %}{{ t('account.no_opening') }}
+  {%- else %}{{ t('account.does_not_reconcile') }}{% endif %}
+</p>
+</div>
+
+{% if ledger.lines %}
+{# The filter is four links rather than a form, so it works with scripting off
+   and each state is a URL an operator can keep. #}
+<p class="filters shows">
+  <span class="hint">{{ t('account.show') }}</span>
+  <a href="?show=all"{% if show == 'all' %} aria-current="page"{% endif %}>{{ t('account.show_all') }}</a>
+  <a href="?show=debit"{% if show == 'debit' %} aria-current="page"{% endif %}>{{ t('account.money_out') }}</a>
+  <a href="?show=credit"{% if show == 'credit' %} aria-current="page"{% endif %}>{{ t('account.money_in') }}</a>
+  {% if ledger.ours %}
+  <a href="?show=ours"{% if show == 'ours' %} aria-current="page"{% endif %}>{{ t('account.show_ours') }}</a>
+  {% endif %}
+</p>
+
+<div class="card">
+<table>
+  <tr>
+    <th>{{ t('account.booked') }}</th>
+    <th>{{ t('account.value_date') }}</th>
+    <th>{{ t('account.counterparty') }}</th>
+    <th class="num">{{ t('account.money_out') }}</th>
+    <th class="num">{{ t('account.money_in') }}</th>
+    <th class="num">{{ t('account.balance') }}</th>
+  </tr>
+
+  {# Not yet booked, above the ledger and outside it. A `PDNG` entry has not
+     moved the balance, so it has no balance beside it. #}
+  {% if ledger.pending %}
+  <tr><th colspan="6">{{ t('account.not_booked') }}
+      <span class="hint">{{ t('account.not_booked_note') }}</span></th></tr>
+  {% for line in ledger.pending %}
+  {{ ledger_row.row(line, false) }}
+  {% endfor %}
+  {% endif %}
+
+  {% for line in lines %}
+  {{ ledger_row.row(line, ledger.running) }}
+  {% else %}
+  <tr><td colspan="6"><span class="empty">{{ t('account.no_entries') }}</span></td></tr>
+  {% endfor %}
+</table>
+{% if ledger.running %}<p class="hint">{{ t('account.balance_derived') }}</p>{% endif %}
+</div>
+{% endif %}
+
+<details class="card">
+  <summary>{{ t('statement.normalised') }}</summary>
+  <table class="plain">
+    <tr><td>{{ t('common.connection') }}</td><td><code>{{ statement.connection_id }}</code></td></tr>
+    <tr><td>{{ t('statement.identification') }}</td><td class="mono">{{ statement.identification or '—' }}</td></tr>
+    <tr><td>{{ t('statement.currency') }}</td><td>{{ statement.currency or '—' }}</td></tr>
+    <tr><td>{{ t('statement.sequence') }}</td><td>{{ statement.sequence_number or '—' }}</td></tr>
+    <tr><td>{{ t('statement.period') }}</td>
+        <td>{{ statement.from_datetime | moment }} &rarr; {{ statement.to_datetime | moment }}</td></tr>
+    <tr><td>{{ t('statement.download_run') }}</td><td><code>{{ statement.run_id or '—' }}</code></td></tr>
+    <tr><td>{{ t('order.ingested') }}</td><td>{{ statement.ingested_at | moment }}</td></tr>
+    <tr><td>{{ t('statement.content_hash') }}</td><td class="mono">{{ statement.content_hash }}</td></tr>
+  </table>
+  <pre class="json">{{ statement.payload | pretty_json }}</pre>
+</details>
+{% endblock %}

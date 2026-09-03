@@ -368,7 +368,15 @@ class Formats:
             try:
                 value = _dt.date.fromisoformat(value)
             except ValueError:
-                return value
+                # ISO 20022 lets a bank choose per field, so a booking date
+                # arrives as a date from one bank and as a date-time from the
+                # next. Both are the same day to a reader, and printing the raw
+                # string for one of them would put an ISO timestamp in a column
+                # of dates.
+                try:
+                    value = _dt.datetime.fromisoformat(value)
+                except ValueError:
+                    return value
         if isinstance(value, _dt.datetime):
             value = value.astimezone(_dt.timezone.utc).date()
         order, separator = DATES[self.locale]

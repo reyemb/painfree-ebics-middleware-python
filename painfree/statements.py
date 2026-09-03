@@ -63,12 +63,27 @@ from painfree.isoxml import DocumentUnreadable, iso_document, local, message_typ
 from painfree.logging import bind, get_logger
 from painfree.pain002 import CONTAINER as PAIN002_CONTAINER
 from painfree.pain002 import normalise_pain002
-from painfree.reconcile import PAYMENT_STATUS, StatusReconciler
+from painfree.reconcile import PAYMENT_STATUS, StatusReconciler, resolve
 from painfree.schema import statement
 
 log = get_logger("painfree.statements")
 
 STATEMENT_ID_PREFIX = "stm_"
+
+#: The two kinds of document this table holds, as the prefix of the message
+#: type the document's own namespace gave it. `camt` is an account's own
+#: history; `pain.002` is a bank answering something this service sent. They
+#: share a table and a route and nothing else.
+ACCOUNTS = "account"
+RESPONSES = "response"
+FAMILIES: dict[str, str] = {ACCOUNTS: "camt.%", RESPONSES: "pain.002%"}
+
+
+def _of_family(query: Any, family: str | None) -> Any:
+    """Narrow a statement query to one family, or leave it alone."""
+    pattern = FAMILIES.get(family or "")
+    return query.where(statement.c.message_type.like(pattern)) if pattern \
+        else query
 
 #: The local part of a ZIP file's magic. A BTF may declare
 #: ``Container containerType="ZIP"`` and a bank then packs one archive of one
@@ -231,6 +246,7 @@ class StatementStore:
     def recent(self, *, connection_id: str | None = None,
                connection_ids: Sequence[str] | None = None,
                message_type: str | None = None,
+               family: str | None = None,
                limit: int = 50) -> list[dict[str, Any]]:
         """Ingested statements, newest first, without their payloads.
 
@@ -238,6 +254,11 @@ class StatementStore:
         payment, and a hundred of them on an index page is a hundred more
         places for a screenshot to leak one. :meth:`get` returns it for the one
         statement an operator opened.
+
+        ``family`` narrows to one of the two kinds of document this table
+        holds, by the message type the document's own namespace gave it. They
+        answer different questions and an index that lists both has a closing
+        balance column that is empty for half its rows.
         """
         query = (select(statement.c.statement_id, statement.c.connection_id,
                         statement.c.order_id,
@@ -256,10 +277,42 @@ class StatementStore:
                 statement.c.connection_id.in_(list(connection_ids)))
         if message_type:
             query = query.where(statement.c.message_type == message_type)
+        query = _of_family(query, family)
         with self._engine.connect() as connection:
             rows = connection.execute(
                 query.limit(max(1, min(limit, 500)))).mappings().all()
         return [dict(row) for row in rows]
+
+    def responses(self, *, connection_ids: Sequence[str] | None = None,
+                  connection_id: str | None = None,
+                  message_type: str | None = None,
+                  limit: int = 50) -> list[dict[str, Any]]:
+        """Status reports, newest first, each resolved to what it said.
+
+        This one **does** read payloads, and the rule above is why it is a
+        separate method rather than a flag: what it takes out of them is the
+        status, the counts and the bank's reason, which is what the reconciler
+        already writes to the audit log and the webhook envelope. No amount and
+        no counterparty reaches the index.
+        """
+        query = (select(statement.c.statement_id, statement.c.connection_id,
+                        statement.c.order_id, statement.c.message_type,
+                        statement.c.identification, statement.c.ingested_at,
+                        statement.c.payload)
+                 .order_by(statement.c.seq.desc()))
+        if connection_id:
+            query = query.where(statement.c.connection_id == connection_id)
+        if connection_ids is not None:
+            query = query.where(
+                statement.c.connection_id.in_(list(connection_ids)))
+        if message_type:
+            query = query.where(statement.c.message_type == message_type)
+        query = _of_family(query, RESPONSES)
+        with self._engine.connect() as connection:
+            rows = connection.execute(
+                query.limit(max(1, min(limit, 500)))).mappings().all()
+        return [{name: value for name, value in row.items() if name != "payload"}
+                | {"outcome": resolve(row["payload"] or {})} for row in rows]
 
     def message_types(self) -> list[str]:
         """The distinct message types held, so a filter offers what exists."""

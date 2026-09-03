@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+{% import "_bank.html" as bank with context %}
+{% block title %}{{ statement.statement_id }} — painfree{% endblock %}
+{% block body %}
+{# A `pain.002` read against the payment it answers.
+
+   The rows below are the *message's*, not the report's. A bank reports by
+   exception, so the report for a file it took whole names no transaction at
+   all and rendering what it carries would leave this page empty in the
+   ordinary case.
+
+   The three status levels stay three. Every answer says which level it was
+   read at, because a status inherited from the file is not the bank having
+   spoken about that payment, and a page that let those look alike would be
+   telling an operator something the document does not say. #}
+{% set known = status_codes.get(outcome.status or '') %}
+
+{# One chip per status, tinted by what this service does with the code rather
+   than by the code itself: `PART` and `ACSP` are both acknowledgements and a
+   reader should not have to know the vocabulary to see that. #}
+{% macro verdict(status) %}
+{% set code = status_codes.get(status or '') %}
+<span class="tag {% if code and code.disposition in ('accepts', 'partial') %}acknowledged{% elif code and code.disposition == 'refuses' %}rejected{% else %}created{% endif %}">{{ status }}</span>
+{%- endmacro %}
+
+<h1>
+  {%- if known and known.disposition == 'accepts' %}{{ t('response.heading_accepted') }}
+  {%- elif known and known.disposition == 'partial' %}{{ t('response.heading_partial') }}
+  {%- elif known and known.disposition == 'refuses' %}{{ t('response.heading_refused') }}
+  {%- elif known %}{{ t('response.heading_undecided') }}
+  {%- elif outcome.status %}{{ t('response.heading_unknown') }}
+  {%- else %}{{ t('response.heading_silent') }}{% endif %}
+</h1>
+<p class="lede">
+  {% if order %}{{ t('statements.reports_on') }}
+    <a href="/ui/orders/{{ order.order_id }}"><code>{{ order.order_id }}</code></a>.
+  {% elif statement.order_id %}{{ t('statements.reports_on') }}
+    <a href="/ui/orders/{{ statement.order_id }}"><code>{{ statement.order_id }}</code></a>.
+  {% endif %}
+  {{ statement.message_type }}. {{ t('response.received') }} {{ statement.ingested_at | moment }}.
+</p>
+
+{# What the report does to the order, in the words of the table the reconciler
+   decides with. The code and the ISO name are the standard's; the sentence
+   beside them is this service's gloss and is what a locale changes. #}
+<div class="card {% if known and known.disposition == 'refuses' %}bad{% elif known and known.disposition == 'partial' %}warn{% elif known and known.disposition == 'accepts' %}good{% endif %}">
+  {% if known %}
+  <p><strong><code>{{ outcome.status }}</code> {{ known.name }}</strong>:
+     {{ t.maybe('status_code.' ~ known.code, known.meaning) }}.</p>
+  {% if known.disposition == 'accepts' %}<p>{{ t('response.not_settled') }}</p>
+  {% elif known.disposition == 'partial' %}<p>{{ t('response.part_note') }}</p>
+  {% elif known.disposition == 'undecided' %}<p>{{ t('response.undecided_note') }}</p>
+  {% endif %}
+  {% elif outcome.status %}
+  <p><strong><code>{{ outcome.status }}</code></strong> {{ t('response.unknown_note') }}
+     <a href="/ui/status-codes">{{ t('order.status_code_page') }}</a>.</p>
+  {% else %}
+  <p>{{ t('response.silent_note') }}</p>
+  {% endif %}
+</div>
+
+{% if not statement.order_id %}
+<div class="card warn">
+  <p><strong>{{ t('response.unmatched_heading') }}</strong>
+     {{ t('statement.no_order') }}
+     <code>{{ statement.identification or '—' }}</code>.</p>
+  <p>{{ t('response.unmatched_body') }}</p>
+</div>
+{% endif %}
+
+{# The three levels, side by side, with the one that decided marked. Nothing
+   here is derived from anything else here: a level the bank left out says so
+   rather than repeating the level above it. #}
+<div class="ladder">
+  <div class="rung {% if outcome.status %}decides{% endif %}">
+    <div class="rung-level">{{ t('response.level_group') }} <code>GrpSts</code></div>
+    <div class="rung-value">
+      {% if report.group.status %}{{ verdict(report.group.status) }}
+      {% else %}<span class="silent">{{ t('response.not_reported') }}</span>{% endif %}
+      {% if outcome.status %}<span class="tag created">{{ t('response.decides') }}</span>{% endif %}
+    </div>
+    <span class="hint">{{ t('response.group_is_headline') }}</span>
+  </div>
+
+  <div class="rung">
+    <div class="rung-level">{{ t('response.level_payment') }} <code>PmtInfSts</code></div>
+    <div class="rung-value">
+      {% for block in report.blocks %}
+      {% if block.answer.status %}{{ verdict(block.answer.status) }}
+      {% else %}<span class="silent">{{ t('response.not_reported') }}</span>{% endif %}
+      {% if block.payment_information_id %}<code>{{ block.payment_information_id }}</code>{% endif %}
+      {% else %}
+      <span class="silent">{{ t('response.not_reported') }}</span>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="rung">
+    <div class="rung-level">{{ t('response.level_transaction') }} <code>TxSts</code></div>
+    <div class="rung-value">
+      {% if report.named %}
+      <span class="tag done">{{ t('order.accepted_count') }} {{ outcome.accepted | count }}</span>
+      <span class="tag rejected">{{ t('order.rejected_count') }} {{ outcome.rejected | count }}</span>
+      {% else %}<span class="silent">{{ t('response.not_reported') }}</span>{% endif %}
+    </div>
+    <span class="hint">{{ t('response.by_exception') }}</span>
+  </div>
+</div>
+
+{% if answers %}
+<div class="card">
+{# Two blocks of columns, and the boundary between them is the point of the
+   table: the left half is the message this service sent and the right half is
+   what the bank wrote about it. Neither is derived from the other. #}
+<table>
+  <tr class="sources">
+    <th colspan="3" class="ours">{{ t('response.we_sent') }} <code>pain.001</code></th>
+    <th colspan="2" class="theirs">{{ t('response.bank_said') }} <code>{{ statement.message_type }}</code></th>
+  </tr>
+  <tr>
+    <th>{{ t('order.creditor') }}</th>
+    <th class="num">{{ t('order.amount') }}</th>
+    <th>{{ t('order.requested_execution') }}</th>
+    <th class="theirs">{{ t('order.status') }}</th>
+    <th class="theirs">{{ t('order.reason') }}</th>
+  </tr>
+  {% for transfer, answer in answers %}
+  <tr>
+    <td>{{ transfer.creditor.name or '—' }}
+        {% if transfer.creditor.iban %}<br><code>{{ transfer.creditor.iban }}</code>{% endif %}
+        {% if transfer.remittance %}<br><small>{{ transfer.remittance }}</small>{% endif %}
+        {% if transfer.reference %}<br><small><code>{{ transfer.reference_type }} {{ transfer.reference }}</code></small>{% endif %}</td>
+    <td class="num">{{ transfer.amount | amount(transfer.currency) }}
+        {% if transfer.end_to_end_id %}<br><small><code>{{ transfer.end_to_end_id }}</code></small>{% endif %}</td>
+    <td>{{ payment.execution_date | day }}</td>
+    <td class="theirs">
+      {% set code = answer.code %}
+      {% if answer.status %}
+      {{ verdict(answer.status) }}
+      <span class="provenance">
+        {%- if answer.inherited %}<span class="inherited">{{ code.name if code else t('response.unknown_status') }}</span>,
+          {% if answer.level == 'payment' %}{{ t('response.from_payment') }}{% else %}{{ t('response.from_group') }}{% endif %}
+        {%- else %}{{ code.name if code else t('response.unknown_status') }}{% endif %}
+      </span>
+      {% if answer.accepted_at %}<span class="hint">{{ t('response.accepted_at') }} {{ answer.accepted_at }}</span>{% endif %}
+      {% else %}<span class="silent">{{ t('response.unanswered') }}</span>{% endif %}
+    </td>
+    <td class="theirs">
+      {% for reason in answer.reasons %}
+      <div>{% if reason.get('code') or reason.get('proprietary') %}<code>{{ reason.get('code') or reason.get('proprietary') }}</code>{% endif %}
+        {{ bank.quiet((reason.get('additional_information') or []) | join(' ')) }}</div>
+      {% if reason.get('originator') %}<span class="hint">{{ reason.get('originator') }}</span>{% endif %}
+      {% else %}—{% endfor %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+
+{# What the bank refused, in money. The counts on the report are the bank's own
+   and are counted by exception; this is counted over the message. #}
+<table class="plain">
+  {% for total in totals %}
+  <tr>
+    <td>{{ t('response.sent') }}</td>
+    <td>{{ total.count | count }} &middot; {{ total.sent | amount(total.currency) }}
+      {% if total.refused_count %}
+      <br><span class="tag rejected">{{ t('order.rejected_count') }}</span>
+      {{ total.refused_count | count }} &middot; {{ total.refused | amount(total.currency) }}
+      {% endif %}</td>
+  </tr>
+  {% endfor %}
+</table>
+
+{# The bank restating the count and the control sum is a check, not a field:
+   two records of one message that can disagree, and a disagreement is the
+   report being about something else. A bank that restates neither says so
+   rather than printing two dashes. #}
+{% set sent_count = payment.transfers | length %}
+<p class="hint">
+  {% if original.get('transactions') or original.get('control_sum') %}
+    {% if original.get('transactions') and original.get('transactions') | int == sent_count %}{{ t('response.restated_matches') }}
+    {% else %}{{ t('response.restated_differs') }}{% endif %}
+  {% else %}{{ t('response.not_restated') }}{% endif %}
+</p>
+<p class="hint">{{ t('bank.note') }}</p>
+</div>
+{% elif statement.order_id %}
+<div class="card">
+  <p class="empty">
+    {%- if sees_payment %}{{ t('response.no_transfers') }}
+    {%- else %}{{ t('response.needs_payments_read') }}{% endif %}</p>
+</div>
+{% endif %}
+
+{% if unsent %}
+<div class="card warn">
+  <p><strong>{{ t('response.unsent_heading') }}</strong> {{ t('response.unsent_body') }}</p>
+  <p>{% for reference in unsent %}<code>{{ reference }}</code> {% endfor %}</p>
+</div>
+{% endif %}
+
+{# The payload is the normalised document: an interchange shape whose field
+   names and values are the same in every locale. It is kept, closed, because
+   the page above is a reading of it and a reading is not the record. #}
+<details class="card">
+  <summary>{{ t('statement.normalised') }}</summary>
+  <table class="plain">
+    <tr><td>{{ t('common.connection') }}</td><td><code>{{ statement.connection_id }}</code></td></tr>
+    <tr><td>{{ t('statement.identification') }}</td><td class="mono">{{ statement.identification or '—' }}</td></tr>
+    <tr><td>{{ t('order.reported_at') }}</td><td>{{ statement.created_at | moment }}</td></tr>
+    <tr><td>{{ t('statement.download_run') }}</td><td><code>{{ statement.run_id or '—' }}</code></td></tr>
+    <tr><td>{{ t('statement.content_hash') }}</td><td class="mono">{{ statement.content_hash }}</td></tr>
+  </table>
+  <pre class="json">{{ statement.payload | pretty_json }}</pre>
+</details>
+{% endblock %}

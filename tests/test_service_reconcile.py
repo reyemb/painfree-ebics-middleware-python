@@ -35,13 +35,13 @@ from sqlalchemy import select
 from conftest import (BANK_CONNECTION_ID, CUSTODY_SECRET, payment_body,
                       payment_status, serving_bank, status_transaction,
                       upload_script, valid_payment_status)
-from painfree import db, payments
+from painfree import db, payments, reconcile
 from painfree.audit import AuditLog
 from painfree.config import load_settings
 from painfree.dispatcher import WebhookDispatcher
 from painfree.orders import OrderState, OrderStore
 from painfree.queue import OrderQueue
-from painfree.reconcile import STATUS_CODES, StatusReconciler, resolve
+from painfree.reconcile import STATUS_CODES, StatusReconciler, reading, resolve
 from painfree.schema import audit_log, payment_order, statement, webhook_delivery
 from painfree.statements import StatementStore
 from painfree.worker import UploadWorker
@@ -174,6 +174,68 @@ def test_every_status_code_maps_to_exactly_one_of_three_outcomes():
         "acknowledged", "rejected", "no change"}
     assert STATUS_CODES["PART"].outcome == "acknowledged"
     assert STATUS_CODES["PDNG"].outcome == "no change"
+
+
+# --- reading one report for a page -----------------------------------------
+#
+# `resolve` answers what the report does to the order. These answer what it
+# said about each payment the order carries, which is the other question and
+# has a different failure mode: silence.
+
+def test_a_transfer_the_bank_named_carries_the_banks_own_words():
+    report = reading(_partial_payload())
+    refused = report.for_transfer("E2E-0002")
+    assert refused.status == "RJCT" and refused.level == reconcile.TRANSACTION
+    assert not refused.inherited and refused.refused
+    assert refused.reasons[0]["code"] == "AC01"
+    assert report.for_transfer("E2E-0001").status == "ACSP"
+
+
+def test_a_transfer_the_bank_did_not_name_inherits_and_says_so():
+    """Banks report by exception, so most transfers are answered from above.
+
+    The status is still shown, because the file it was in *was* answered. What
+    must not happen is it reading as though the bank had spoken about this
+    payment: the level says which of the two it is.
+    """
+    report = reading(_partial_payload())
+    silent = report.for_transfer("E2E-0404")
+    assert silent.status == "ACCP", "the payment block covers it"
+    assert silent.level == reconcile.PAYMENT and silent.inherited
+
+    group_only = reading(_payload(group_status="ACCP"))
+    assert group_only.for_transfer("E2E-0404").level == reconcile.GROUP
+
+
+def test_a_refusal_is_never_read_across_to_the_transfer_beside_it():
+    """One listed rejection says nothing about the transfers it does not name."""
+    report = reading(_payload(group_status="ACCP", payment_status=None,
+                              transactions=(status_transaction("RJCT"),)))
+    assert report.for_transfer("E2E-0002").status == "ACCP"
+    assert not report.for_transfer("E2E-0002").refused
+
+
+def test_a_report_that_answers_nothing_is_unanswered_rather_than_blank():
+    """A `pain.002` with no status at any level exists. It is not a rejection."""
+    report = reading(_payload(group_status=None))
+    answer = report.for_transfer("E2E-0001")
+    assert answer.status is None and answer.level == reconcile.UNANSWERED
+    assert not answer.refused and answer.code is None
+
+
+def test_the_bank_answering_about_something_we_did_not_send_is_visible():
+    report = reading(_partial_payload())
+    assert report.unsent(["E2E-0001"]) == ("E2E-0002",)
+    assert report.unsent(["E2E-0001", "E2E-0002"]) == ()
+
+
+def test_the_block_level_is_matched_by_its_own_id_when_there_is_one():
+    report = reading(_partial_payload())
+    assert report.blocks[0].payment_information_id == "PMTINF-0001"
+    assert report.blocks[0].accepted == 1 and report.blocks[0].rejected == 1
+    named = report.for_transfer("E2E-0404",
+                                payment_information_id="PMTINF-0001")
+    assert named.status == "ACCP" and named.level == reconcile.PAYMENT
 
 
 def _payload(**kwargs) -> dict:

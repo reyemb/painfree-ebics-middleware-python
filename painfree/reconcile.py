@@ -327,6 +327,159 @@ def original_message_id(payload: dict[str, Any]) -> str | None:
     return (payload.get("original") or {}).get("message_identification")
 
 
+# --- reading it for a page --------------------------------------------------
+#
+# `resolve` above answers "what does this report do to the order", which is one
+# code and one transition. A page has the other question: **what did the bank
+# say about each payment we sent** -- and the answer is not in the report for
+# most of them, because a bank reports by exception. A file the bank took whole
+# names no transaction at all.
+#
+# So the rows on that page come from the `pain.001` this service sent, and this
+# is what annotates them. The three levels stay three levels: an answer carries
+# the level it was read at, and a page that shows an inherited status says so
+# rather than letting it read as the bank having spoken about that payment.
+
+#: Where an answer came from. Not an ordering: `group` is the level that
+#: *decides*, and `transaction` is only the most specific.
+TRANSACTION = "transaction"
+PAYMENT = "payment"
+GROUP = "group"
+UNANSWERED = "unanswered"
+
+
+@dataclass(frozen=True, slots=True)
+class Answer:
+    """What one `pain.002` says about one thing, and at which level it said it."""
+
+    status: str | None
+    level: str
+    reasons: tuple[dict[str, Any], ...] = ()
+    accepted_at: str | None = None
+
+    @property
+    def code(self) -> StatusCode | None:
+        """This service's reading of the status, or ``None`` for a new one."""
+        return STATUS_CODES.get(self.status or "")
+
+    @property
+    def inherited(self) -> bool:
+        """True when the bank did not say this about *this* transfer."""
+        return self.level in (PAYMENT, GROUP)
+
+    @property
+    def refused(self) -> bool:
+        code = self.code
+        return code is not None and code.disposition == REFUSES
+
+
+@dataclass(frozen=True, slots=True)
+class Block:
+    """One `OrgnlPmtInfAndSts`, for the level of the report between the two."""
+
+    payment_information_id: str | None
+    answer: Answer
+    transactions: int = 0
+    accepted: int = 0
+    rejected: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class Reading:
+    """One report, indexed so a page can ask it about one transfer at a time.
+
+    Built once per page. Asking the payload directly per transfer would rescan
+    every block for every row, which is quadratic on exactly the batch that
+    makes the page worth having.
+    """
+
+    group: Answer
+    blocks: tuple[Block, ...]
+    #: Every transfer the report named, by `EndToEndId` and by `InstrId`. Both,
+    #: because a bank may echo one and not the other.
+    by_reference: dict[str, Answer]
+    #: The references the report named, in document order, for finding the ones
+    #: our own message did not send.
+    named: tuple[str, ...]
+
+    def for_transfer(self, end_to_end_id: str | None = None,
+                     instruction_id: str | None = None,
+                     payment_information_id: str | None = None) -> Answer:
+        """The most specific thing the bank said that covers this transfer.
+
+        Transaction, then the payment block it is in, then the whole message.
+        Never a status derived from a *sibling*: a bank listing one refusal has
+        said nothing about the transfer beside it, and reading the refusal
+        across would invent a rejection.
+        """
+        for reference in (end_to_end_id, instruction_id):
+            if reference and reference in self.by_reference:
+                return self.by_reference[reference]
+        block = self._block(payment_information_id)
+        if block is not None and block.answer.status:
+            return Answer(block.answer.status, PAYMENT, block.answer.reasons)
+        if self.group.status:
+            return Answer(self.group.status, GROUP, self.group.reasons)
+        return Answer(None, UNANSWERED)
+
+    def _block(self, payment_information_id: str | None) -> Block | None:
+        """The block this transfer is in, by id, or the only one there is."""
+        for block in self.blocks:
+            if (payment_information_id
+                    and block.payment_information_id == payment_information_id):
+                return block
+        return self.blocks[0] if len(self.blocks) == 1 else None
+
+    def unsent(self, references: Iterable[str | None]) -> tuple[str, ...]:
+        """References the report names that the message we sent does not have.
+
+        A bank answering about a payment this service did not send is worth
+        showing rather than dropping: it is either the wrong report or the
+        wrong join, and both are things an operator has to see.
+        """
+        ours = {reference for reference in references if reference}
+        return tuple(name for name in self.named if name not in ours)
+
+
+def reading(payload: dict[str, Any]) -> Reading:
+    """Index one normalised `pain.002` for display. Pure; no database."""
+    original = payload.get("original") or {}
+    group = Answer(original.get("status"),
+                   GROUP if original.get("status") else UNANSWERED,
+                   tuple(payload.get("reasons") or ()))
+
+    blocks: list[Block] = []
+    by_reference: dict[str, Answer] = {}
+    named: list[str] = []
+    for one in payload.get("payments") or ():
+        transactions = tuple(one.get("transactions") or ())
+        accepted, rejected, _pending = _tally(
+            each.get("status") for each in transactions)
+        for each in transactions:
+            answer = Answer(each.get("status"), TRANSACTION,
+                            tuple(each.get("reasons") or ()),
+                            each.get("acceptance_datetime"))
+            first = True
+            for reference in (each.get("end_to_end_id"),
+                              each.get("instruction_id")):
+                if not reference:
+                    continue
+                by_reference.setdefault(reference, answer)
+                if first:
+                    named.append(reference)
+                    first = False
+        blocks.append(Block(
+            payment_information_id=one.get("payment_information_id"),
+            answer=Answer(one.get("status"),
+                          PAYMENT if one.get("status") else UNANSWERED,
+                          tuple(one.get("reasons") or ())),
+            transactions=len(transactions),
+            accepted=accepted, rejected=rejected))
+
+    return Reading(group=group, blocks=tuple(blocks),
+                   by_reference=by_reference, named=tuple(named))
+
+
 # --- applying it ------------------------------------------------------------
 
 class StatusReconciler:
@@ -523,8 +676,9 @@ class StatusReconciler:
 
 
 __all__: Sequence[str] = [
-    "ACCEPTS", "MAX_REASON_LENGTH", "PARTIAL", "PAYMENT_STATUS",
-    "RECONCILES_FROM", "REFUSES", "STATUS_CODES", "UNDECIDED", "StatusCode",
-    "StatusOutcome", "StatusReconciler", "original_message_id", "reported_at",
-    "resolve",
+    "ACCEPTS", "GROUP", "MAX_REASON_LENGTH", "PARTIAL", "PAYMENT",
+    "PAYMENT_STATUS", "RECONCILES_FROM", "REFUSES", "STATUS_CODES",
+    "TRANSACTION", "UNANSWERED", "UNDECIDED", "Answer", "Block", "Reading",
+    "StatusCode", "StatusOutcome", "StatusReconciler", "original_message_id",
+    "reading", "reported_at", "resolve",
 ]
