@@ -54,6 +54,13 @@ NOT_PROVIDED = "NOTPROVIDED"
 #: Not a Swiss value: SPS uses `SvcLvl/Prtry` or nothing at all.
 SEPA_SERVICE_LEVEL = "SEPA"
 
+#: `ClrSysId/Cd` for the Swiss Bankenclearing number -- the five-digit IID that
+#: characters 5 to 9 of every `CH`/`LI` IBAN carry. This is how an institution
+#: is named without a BIC in the Swiss standards; `CHSIC` is the SIC
+#: participant number, which is a different identifier and not the one an IBAN
+#: contains.
+SWISS_CLEARING_SYSTEM = "CHBCC"
+
 
 #: `Max35Text`, and 34 characters of it: `PF` plus a UUID's hex. Unique per
 #: message because the bank's duplicate detection keys on it, and opaque
@@ -254,27 +261,52 @@ def build(
           instruction.requested_execution_date.isoformat())
     _party(payment, "Dbtr", instruction.debtor)
     _account(payment, "DbtrAcct", instruction.debtor_iban)
-    # `DbtrAgt` is mandatory in `PmtInf` and every child of `FinInstnId` is
-    # optional, so with no BIC there are two defensible documents and the
-    # scheme decides which.
+    # `DbtrAgt` is mandatory in `PmtInf`, and naming the institution is where
+    # three standards have each had their say.
     #
-    # **Under SEPA**, `Othr/Id` of `NOTPROVIDED` is the EPC convention for
-    # "IBAN only, no BIC", and receiving banks expect it. **Under the Swiss
-    # standards it is refused** -- *"Das Element 'Othr' soll in diesem Kontext
-    # nicht verwendet werden"* -- and refused after the file is signed and
-    # uploaded, which is the expensive place to find out.
+    # **A BIC, when the caller gave one.** Nothing to decide.
     #
-    # So the same field that tells the bank which scheme this is decides which
-    # convention to follow: `SvcLvl/Cd` of `SEPA`. Reading the declaration
-    # rather than guessing from a currency or an IBAN country means the
-    # document cannot claim one scheme and be built for the other -- and a
-    # deployment sending real SEPA keeps the element it needs.
+    # **Otherwise the IID, for a Swiss or Liechtenstein account.** Every child
+    # of `FinInstnId` is optional so the ISO schema accepts an empty one -- and
+    # the Swiss rules do not: *"At least one sub-element of <FinInstnId> must be
+    # provided"* (`CH21`). A BIC is not derivable from an IBAN, but the
+    # institution is: characters 5 to 9 of a `CH`/`LI` IBAN are the IID, which
+    # is exactly what `ClrSysMmbId` takes under the `CHBCC` clearing system. So
+    # the account already in this document identifies its own bank, with no
+    # stored BIC to be missing or to drift from the account it describes.
+    #
+    # **Under SEPA, `Othr/Id` of `NOTPROVIDED`.** The EPC convention for "IBAN
+    # only, no BIC", which receiving banks expect -- and which a Swiss bank
+    # refuses outright: *"Das Element 'Othr' soll in diesem Kontext nicht
+    # verwendet werden"*, refused after the file was signed and uploaded, which
+    # is the expensive place to find out. `SvcLvl/Cd` of `SEPA` is the
+    # declaration itself, so reading it rather than guessing from a currency or
+    # an IBAN country means the document cannot claim one scheme and be built
+    # for the other.
+    #
+    # **What is left is a non-Swiss account on a non-SEPA payment with no BIC.**
+    # That still writes an empty `FinInstnId`: it is what the ISO schema allows,
+    # and there is nothing truthful to put there. `CH21` would reject it, but
+    # `CH21` is a Swiss rule and this is not a Swiss account -- a caller in that
+    # position has to supply `debtor_bic`.
     debtor_agent = _element(payment, "DbtrAgt")
     financial = _element(debtor_agent, "FinInstnId")
+    iid = sps.swiss_iid(instruction.debtor_iban)
     if instruction.debtor_bic:
         _text(financial, "BICFI", instruction.debtor_bic)
     elif declares_sepa(payment_type):
+        # Before the IID branch, and deliberately. A Swiss account can send a
+        # SEPA payment, and when the document *declares* SEPA the EPC
+        # convention is what the receiving bank reads. The declaration decides
+        # the conventions, never the IBAN's country -- otherwise a document
+        # could claim one scheme and be built for the other.
         _text(_element(financial, "Othr"), "Id", NOT_PROVIDED)
+    elif iid is not None:
+        member = _element(financial, "ClrSysMmbId")
+        _text(_element(member, "ClrSysId"), "Cd", SWISS_CLEARING_SYSTEM)
+        # Zero-padded back to five: the IID is a five-character field and
+        # `00781` is not `781`.
+        _text(member, "MmbId", f"{iid:05d}")
 
     for transaction in instruction.transactions:
         _transaction(payment, transaction,

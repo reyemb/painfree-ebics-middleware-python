@@ -14,8 +14,8 @@ import decimal
 import pytest
 from lxml import etree
 
-from conftest import (QRR_REFERENCE, payment_body, scor_transfer,
-                      transfer)
+from conftest import (DEBTOR_IBAN, QRR_REFERENCE, payment_body,
+                      scor_transfer, transfer)
 from painfree import pain001, payments, schemes
 
 CREATED_AT = _dt.datetime(2026, 8, 29, 20, 15, 0, tzinfo=_dt.timezone.utc)
@@ -132,21 +132,25 @@ def test_a_debtor_with_no_bic_still_produces_a_valid_document():
     assert find(document, "CstmrCdtTrfInitn/PmtInf/DbtrAgt/FinInstnId/BICFI") == []
 
 
-def test_a_debtor_agent_with_no_bic_is_empty_rather_than_NOTPROVIDED():
-    """`Othr/Id` of `NOTPROVIDED` is the **EPC SEPA** convention, and a Swiss
-    bank's validator refuses it: *"Das Element 'Othr' soll in diesem Kontext
-    nicht verwendet werden"*.
+def test_a_swiss_debtor_agent_with_no_bic_is_named_by_its_IID():
+    """Two rules meet here, and the first one on its own produced an invalid
+    document for four releases.
 
-    It refuses it **after** the file is signed and uploaded, which is why this
-    is worth a test of its own rather than leaving it to `schema_failures`.
-    The XSD accepts `Othr` here perfectly happily -- schema-valid and accepted
-    are different questions, and only the first one is answerable locally, so
-    the one rule this file can enforce is *do not emit the thing that was
-    refused*.
+    **Never `Othr/Id` of `NOTPROVIDED`.** That is the EPC SEPA convention, and
+    a Swiss bank's validator refuses it -- *"Das Element 'Othr' soll in diesem
+    Kontext nicht verwendet werden"* -- after the file is signed and uploaded.
 
-    `DbtrAgt` is mandatory in `PmtInf` and every child of `FinInstnId` is
-    optional, so an empty `FinInstnId` is the honest document: the debit IBAN
-    already identifies the institution.
+    **And never an empty `FinInstnId` either.** That was the first fix, and
+    GEFEG.FX found it: *"CH21: At least one sub-element of <FinInstnId> must be
+    provided"*. Schema-valid, Swiss-invalid. The XSD accepts an empty
+    `FinInstnId` because every child of it is optional, which is exactly why
+    `schema_failures` passed the document that got rejected -- the two layers
+    answer different questions.
+
+    A BIC is not derivable from an IBAN. The *institution* is: characters 5 to
+    9 of a `CH`/`LI` IBAN are the IID, and `ClrSysMmbId` under `CHBCC` is what
+    takes it. So the account already in the document names its own bank, with
+    nothing stored that could be missing or out of date.
     """
     body = payment_body()
     body.pop("debtor_bic")
@@ -156,9 +160,39 @@ def test_a_debtor_agent_with_no_bic_is_empty_rather_than_NOTPROVIDED():
     agent = parse(document).find(
         f".//{{{pain001.NAMESPACE}}}DbtrAgt/{{{pain001.NAMESPACE}}}FinInstnId")
     assert agent is not None, "DbtrAgt is mandatory and must still be there"
-    assert list(agent) == [], (
-        "FinInstnId carries "
-        f"{[etree.QName(child).localname for child in agent]}")
+    assert list(agent) != [], "an empty FinInstnId is what CH21 rejects"
+    assert [etree.QName(child).localname for child in agent] == ["ClrSysMmbId"]
+
+    assert find(document, "CstmrCdtTrfInitn/PmtInf/DbtrAgt/FinInstnId/"
+                          "ClrSysMmbId/ClrSysId/Cd") == ["CHBCC"]
+    assert find(document, "CstmrCdtTrfInitn/PmtInf/DbtrAgt/FinInstnId/"
+                          "ClrSysMmbId/MmbId") == [DEBTOR_IBAN.replace(" ", "")[4:9]]
+
+
+def test_the_IID_keeps_its_leading_zeros():
+    """`00781` is a five-character field, not the number 781. Read through an
+    int on the way out of the IBAN, so this is the assertion that the padding
+    came back."""
+    body = payment_body()
+    body.pop("debtor_bic")
+    member = find(build(body), "CstmrCdtTrfInitn/PmtInf/DbtrAgt/FinInstnId/"
+                               "ClrSysMmbId/MmbId")
+    assert len(member[0]) == 5, member
+
+
+def test_a_non_swiss_debtor_with_no_bic_is_left_empty():
+    """`CH21` is a Swiss rule and a German account is not a Swiss one. There is
+    no IID to derive and nothing truthful to put there, so the element stays
+    empty and a caller in that position supplies `debtor_bic`."""
+    body = payment_body()
+    body.pop("debtor_bic")
+    body["debtor_iban"] = "DE89370400440532013000"
+    document = build(body)
+
+    assert pain001.schema_failures(document) == []
+    agent = parse(document).find(
+        f".//{{{pain001.NAMESPACE}}}DbtrAgt/{{{pain001.NAMESPACE}}}FinInstnId")
+    assert list(agent) == []
 
 
 def test_under_sepa_the_no_bic_convention_is_still_written():
