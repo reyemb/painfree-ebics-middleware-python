@@ -426,6 +426,7 @@
 main {
   flex: 1 1 auto;
   min-width: 0;                       /* or a wide table stretches the column */
+  max-width: var(--pf-content-max);
   padding: var(--pf-space-5) var(--pf-space-5) var(--pf-space-7);
 }
 
@@ -440,7 +441,9 @@ main {
    `.steps li .body` and `.letter` already carried their own; this is the
    general paragraph, and it is `ch` rather than pixels because a measure is
    about characters per line. Tables, cards and the drawer now have the width
-   the window has. */
+   the window has, up to `--pf-content-max` -- unbounded was the other
+   overcorrection, and a seven-column table drawn across 2560px is as hard to
+   read across as one squeezed into 1120. */
 main > p,
 main > .card > p {
   max-width: 88ch;

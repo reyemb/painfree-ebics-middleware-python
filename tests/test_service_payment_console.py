@@ -364,3 +364,37 @@ def test_nothing_is_flagged_when_the_bank_was_never_asked(console):
 
     assert page.status_code == 200
     assert "not in the bank's list" not in page.text
+
+
+def test_the_form_offers_no_debtor_bic(console):
+    """The debit account is one the bank published; it knows its own BIC.
+
+    `DbtrAgt` is derived from the IBAN, so the field was optional, correct to
+    leave empty on every payment, and therefore only a way to be wrong.
+    """
+    page = console.get(f"/ui/connections/{CONNECTION}/payment").text
+    assert 'name="debtor_bic"' not in page
+    # The creditor's is a different question -- a foreign beneficiary's bank is
+    # not always derivable -- and stays.
+    assert 'name="creditor_bic"' in page
+
+
+def test_the_account_holder_is_filled_in_from_htd(console):
+    """`HTD` names the subscriber, so the form does not have to ask.
+
+    One value for the whole connection, not one per account, which is why it
+    can be filled when the page is drawn and needs no script on selection.
+    """
+    _htd(console)
+
+    page = console.get(f"/ui/connections/{CONNECTION}/payment").text
+
+    assert 'name="debtor_name"' in page
+    assert "Muster AG" in page
+
+
+def test_the_account_holder_is_blank_when_no_htd_has_been_fetched(console):
+    """No catalogue is not an empty name; the field is simply not guessed."""
+    page = console.get(f"/ui/connections/{CONNECTION}/payment").text
+    assert 'name="debtor_name"' in page
+    assert "Muster AG" not in page

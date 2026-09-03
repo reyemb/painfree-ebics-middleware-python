@@ -50,6 +50,7 @@ from painfree.keyjobs import ALLOWED_FROM, KeyAction, KeyJobStore
 from painfree.keyring import BANK, SUBSCRIBER, Keyring
 from painfree.logging import bind
 from painfree.orders import REPLAYABLE, OrderState, OrderStore
+from painfree.painread import summarise
 from painfree.schemes import DEFAULT_INSTANT, PaymentScheme
 from painfree.schedule import DownloadSchedules
 from painfree.ui.rendering import render
@@ -518,7 +519,10 @@ def letter(request: Request, connection_id: str,
 @router.get("/orders")
 def orders(request: Request, connection_id: str = "", state: str = "",
            principal: Principal = Depends(requires(Scope.payments_read))):
-    """Order history, filterable. Never the document -- that is payment content.
+    """Order history, filterable, and what each payment is about.
+
+    Recipient, amount and account first, read out of the message the row
+    carries; the document itself stays a download and is never inline.
 
     The connection filter and its dropdown both come from what this caller
     holds: a filter offering a bank whose orders the page will not show is a
@@ -526,11 +530,17 @@ def orders(request: Request, connection_id: str = "", state: str = "",
     """
     chosen = state if state in {member.value for member in OrderState} else ""
     allowed, possible = access.restrict(principal, connection_id or None)
+    rows = _orders(request).recent(connection_ids=allowed,
+                                   state=chosen or None,
+                                   limit=100) if possible else []
     return render(
         request, "orders.html",
-        orders=_orders(request).recent(connection_ids=allowed,
-                                       state=chosen or None,
-                                       limit=100) if possible else [],
+        orders=rows,
+        # Who each payment is to, read out of the message the order already
+        # carries -- `recent` selects the whole row, so this costs a parse and
+        # no query. Same scope as the document itself: a caller who can list an
+        # order can already download what it says.
+        payments={row.order_id: summarise(row.document) for row in rows},
         connections=access.held(principal, _registry(request).all()),
         states=[member.value for member in OrderState],
         selected_connection=connection_id, selected_state=chosen)
@@ -610,6 +620,7 @@ def order(request: Request, order_id: str, replayed: int = 0,
         access.require(principal, row.connection_id, Scope.payments_read,
                        what="order")
         return render(request, "order.html", order=row,
+                      payment=summarise(row.document),
                       replayed=bool(replayed),
                       replayable=row.state in REPLAYABLE,
                       # Every message built for this order, so an operator can

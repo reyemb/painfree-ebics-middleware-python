@@ -93,6 +93,24 @@ def _debit_accounts(request: Request, connection_id: str) -> list[dict]:
             if account.get("iban")]
 
 
+def _subscriber_name(request: Request, connection_id: str) -> str:
+    """The account holder, as the bank itself names this subscriber in `HTD`.
+
+    One value for the whole connection rather than one per account: `HTD` names
+    the *subscriber*, and every account it then lists is an account that
+    subscriber may draw on. So this does not need a selection to be known --
+    which is why the field can be filled when the form is first drawn, with no
+    script and no round trip when an account is picked.
+
+    Still an ordinary editable input. A bank's registered name is not always
+    what belongs in `Dbtr/Nm`, and a caller who needs a different one types it.
+    """
+    entry = Catalogue(request.app.state.engine).get(connection_id, "HTD")
+    if entry is None or entry.summary is None:
+        return ""
+    return (entry.summary.get("name") or "").strip()
+
+
 def _published_debit(request: Request, connection_id: str,
                      iban: str) -> bool | None:
     """Is this debit account one the bank published? ``None`` if unknown.
@@ -109,7 +127,6 @@ def _published_debit(request: Request, connection_id: str,
 
 
 def _see(path: str) -> RedirectResponse:
-
     return RedirectResponse(path, status_code=303)
 
 
@@ -209,8 +226,10 @@ def payment_form(request: Request, connection_id: str,
     """The form. `payments:submit` **at this bank**, like the API route."""
     with bind(connection_id=connection_id):
         connection = _registry(request).get(connection_id)
+        entered = _blank()
+        entered["debtor_name"] = _subscriber_name(request, connection_id)
         return render(request, "payment_new.html", connection=connection,
-                      entered=_blank(), failures=(),
+                      entered=entered, failures=(),
                       accounts=_debit_accounts(request, connection_id))
 
 

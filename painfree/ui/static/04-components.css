@@ -414,3 +414,12 @@ table.plain td:first-child { color: #45474a; }
   padding-left: var(--pf-space-2);
   font-style: italic;
 }
+
+/* Amounts line up on the decimal point or they are not a column, they are a
+   list of strings that happen to be numbers. `tabular-nums` keeps the digits
+   one width apart in a proportional face, so 1 000.00 and 999.00 stack. */
+th.num, td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

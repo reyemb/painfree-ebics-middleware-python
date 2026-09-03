@@ -30,14 +30,28 @@
 <div class="card">
 {% if orders %}
 <table>
-  <tr><th>{{ t('orders.order') }}</th><th>{{ t('common.connection') }}</th>
+  {# Recipient, amount and account first: they are what an operator is looking
+     for when they open this page. The order id is how the service names the
+     row and matters only once you already have the right row, so it moves to
+     the end and stops being the thing the eye lands on. #}
+  <tr><th>{{ t('orders.creditor') }}</th><th class="num">{{ t('orders.amount') }}</th>
+      <th>{{ t('orders.creditor_iban') }}</th>
       <th>{{ t('common.state') }}</th><th>{{ t('orders.scheme') }}</th>
       <th>{{ t('orders.return_code') }}</th>
-      <th>{{ t('orders.report_text') }}</th><th>{{ t('orders.accepted') }}</th></tr>
+      <th>{{ t('orders.report_text') }}</th><th>{{ t('orders.accepted') }}</th>
+      <th>{{ t('orders.order') }}</th></tr>
   {% for row in orders %}
+  {% set paid = payments.get(row.order_id) %}
   <tr>
-    <td><a href="/ui/orders/{{ row.order_id }}"><code>{{ row.order_id }}</code></a></td>
-    <td><code>{{ row.connection_id }}</code></td>
+    <td><a href="/ui/orders/{{ row.order_id }}">{{ (paid.creditor.name if paid else none) or '—' }}</a>
+        {% if paid and paid.batch %}<br>
+        <small>{{ t('orders.and_more', count=paid.extra) }}</small>{% endif %}</td>
+    {# The control sum, which for a batch is the whole message and not the one
+       transfer named beside it. Said in the label rather than left to be
+       assumed. #}
+    <td class="num">{{ row.control_sum | amount(row.currency) }}</td>
+    <td>{% if paid and paid.creditor.iban %}<code>{{ paid.creditor.iban }}</code>
+        {% else %}—{% endif %}</td>
     <td><span class="tag {{ row.state.value }}">{{ row.state.value }}</span><br>
         <small>{{ t('state.' ~ row.state.value) }}</small></td>
     <td><code>{{ row.scheme.value }}</code>
@@ -45,6 +59,8 @@
     <td>{% if row.return_code %}<code>{{ row.return_code }}</code>{% else %}—{% endif %}</td>
     <td>{% if row.report_text %}{{ bank.quiet(row.report_text) }}{% else %}—{% endif %}</td>
     <td>{{ row.accepted_at | moment }}</td>
+    <td><a href="/ui/orders/{{ row.order_id }}"><code>{{ row.order_id }}</code></a><br>
+        <small><code>{{ row.connection_id }}</code></small></td>
   </tr>
   {% endfor %}
 </table>

@@ -197,6 +197,11 @@
   /* --- layout ------------------------------------------------------------- */
   --pf-drawer-width: 264px;
   --pf-app-bar-height: 64px;
+  /* The content column, on a screen wide enough to exceed it. 1920 less the
+     drawer: wide enough that the orders table stops scrolling sideways, and
+     bounded so a 2560px monitor does not stretch a seven-column table across
+     its whole width, which is its own kind of unreadable. */
+  --pf-content-max: calc(1920px - var(--pf-drawer-width));
 }
 
 /* The two explicit choices. `color-scheme` is the whole switch: every role

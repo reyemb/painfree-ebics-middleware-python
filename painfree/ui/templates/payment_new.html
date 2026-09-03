@@ -61,11 +61,12 @@
     <a href="/ui/connections/{{ connection.connection_id }}/catalogue">{{ t('payment_new.debtor_iban_ask') }}</a></p>
   {% endif %}
 
-  <label for="debtor_bic">{{ t('payment_new.debtor_bic') }}
-    <span class="hint">{{ t('common.optional') }}</span>
-  </label>
-  <input type="text" id="debtor_bic" name="debtor_bic" class="mono"
-         value="{{ entered.debtor_bic }}">
+  {# No debtor BIC field. The debit account is one the bank itself published in
+     `HTD`, so the bank knows which institution holds it better than the person
+     typing -- and `DbtrAgt` is derived from the IBAN rather than from anything
+     entered here. An optional field that is right to leave empty on every
+     payment is a field that only offers a way to be wrong. The API still
+     accepts `debtor_bic` for callers that have a reason to set it. #}
 
   <h2>{{ t('payment_new.creditor') }}</h2>
   <label for="creditor_name">{{ t('payment_new.creditor_name') }}</label>

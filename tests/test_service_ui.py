@@ -123,16 +123,34 @@ def test_the_letter_carries_the_fingerprints_of_the_stored_keys(console):
         assert version.value in page.text
 
 
-def test_an_order_page_never_renders_the_payment_document(console):
+def test_an_order_page_renders_a_summary_and_never_the_document(console):
+    """Who was paid, yes. The message itself, no.
+
+    These were one rule and are now two, because they were never the same
+    question. Dumping `pain.001` into a page is a rendering mistake: XML nobody
+    reads, in a page that then has to escape it. Naming the recipient is what
+    the page is *for* -- an operator scanning an order history is looking for
+    "did Robert Schneider AG get paid", and an order id cannot answer that.
+
+    It is not a widening of access either. `/ui/orders/{id}/document.xml` needs
+    the same `payments:read` this page needs, so the caller reading this
+    summary could already download every byte it was taken from. What is
+    withheld here is withheld from *the layout*, not from the reader.
+    """
     client, engine, _ = console
     order = _submit(client, "console-nodoc").json()
     page = client.get(f"/ui/orders/{order['order_id']}", headers=_admin())
     assert page.status_code == 200
     assert order["msg_id"] in page.text
     assert "pain.001" in page.text  # the message type, which is not content
+
+    # The summary: the recipient and the account, read out of the document.
+    assert "CH4431999123000889012" in page.text
+
+    # The document: still never inline, in any form.
     assert "<Document" not in page.text
     assert "CdtTrfTxInf" not in page.text
-    assert "CH4431999123000889012" not in page.text
+    assert "urn:iso:std:iso:20022" not in page.text
 
 
 # --- the browser story ------------------------------------------------------
