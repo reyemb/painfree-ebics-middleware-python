@@ -63,20 +63,123 @@ image or committed. Everything that survives a restart is a directory under
 `state/`, so the deployment is this folder and no compose command can delete
 any of it.
 
-## Backups
+## Backups, and moving to another server
 
 ```bash
-deploy/snapshot.sh          # one .tar.gz that restores on another machine
+deploy/snapshot.sh --encrypt-to age1…    # one encrypted archive, restores anywhere
 ```
 
-`state/db` is owned by a uid inside the container's user namespace, so `tar` and
-`cp -r` run as you will skip it, keep going, and write an archive that holds the
-custody secret and the certificates but not the database. `snapshot.sh` takes
-the database as a `pg_dump` from inside the container that can read it, and
-refuses to write anything if that dump comes back empty.
+That is the whole move: one file, and the machine it came from can be thrown
+away.
 
-The archive contains the custody secret **and** the data it opens. Encrypt it
-before it goes anywhere you do not control.
+**If you deployed from the published image, you have no `deploy/` directory.**
+The scripts are inside the image; take them out of it:
+
+```bash
+podman run --rm ghcr.io/reyemb/painfree:0.3.2 deploy-scripts | tar x
+```
+
+That writes `deploy/` into the current directory — seven scripts, matching the
+image you are running rather than whatever `main` looks like today. `docker run`
+works identically.
+
+### Why not `tar czf everything.tar.gz .`
+
+`state/db` is owned by a uid inside the container's user namespace, so `tar` and
+`cp -r` run as you will skip it, keep going, and exit 0. The archive that comes
+out holds the custody secret and the certificates but not the database — it
+looks complete and restores to nothing. `snapshot.sh` takes the database as a
+`pg_dump` from inside the container that can read it, and refuses to write
+anything if that dump comes back empty.
+
+### Encrypting it — not optional, and not a step afterwards
+
+The archive contains the custody secret **and** the sealed keys that secret
+opens. Everything else in this project keeps those two apart; a snapshot is the
+one artefact that deliberately puts them together, because a move needs both.
+Anyone who reads the file can start your stack elsewhere and sign payments from
+your accounts.
+
+So `snapshot.sh` has no default. It takes one of three answers and refuses to
+write anything without one:
+
+| | |
+|---|---|
+| `--encrypt-to age1…` | a public key. Nothing secret is typed or stored on this host |
+| `--encrypt-to keys.txt` | a file of public keys, for more than one recipient |
+| `--passphrase` | prompts twice. Fine for a move you complete today |
+| `--plaintext` | no encryption, said out loud. Prints how to encrypt it afterwards |
+
+Make a key pair once, on the machine that will *receive* the backup:
+
+```bash
+age-keygen -o painfree-backup.key      # prints the public key; keep the file safe
+```
+
+Give the public key to `--encrypt-to`. Keep `painfree-backup.key` anywhere other
+than the host being backed up — a key stored beside its own ciphertext is a
+filename, not a key.
+
+The tar is piped straight into `age`, so the plaintext never becomes a file. It
+cannot be left behind by an interrupted run and cannot be recovered from free
+space afterwards.
+
+Without `age` installed (`apt install age`, `brew install age`,
+`nix profile install nixpkgs#age`):
+
+```bash
+deploy/snapshot.sh --plaintext
+openssl enc -aes-256-ctr -pbkdf2 -iter 600000 -salt \
+    -in backups/painfree-….tar.gz -out backups/painfree-….tar.gz.enc
+shred -u backups/painfree-….tar.gz
+```
+
+That leaves the plaintext on disk between the two commands, which is why it is
+the fallback and not the recommendation.
+
+### Restoring on the new machine
+
+The new host needs podman or docker and nothing else — no Python, no `uv`, no
+database.
+
+```bash
+age -d -i painfree-backup.key painfree-….tar.gz.age | tar xz
+cd painfree-…
+
+mkdir -p deploy && mv secrets deploy/secrets
+chmod 700 deploy/secrets && chmod 444 deploy/secrets/*
+
+podman-compose up -d                 # empty stack, schema migrates
+deploy/restore.sh painfree.dump      # checks the custody key before it starts
+podman-compose exec -T worker python - < deploy/verify-keys.py
+```
+
+**Those two `chmod` lines are load-bearing.** The secret files are bind-mounted
+into containers that run as an unprivileged uid of their own, which is not your
+uid, so the files have to be readable by *other* — `0444`. The `0700` directory
+around them is what keeps them private; that is where the protection lives, not
+in the file bits. A `0600` file owned by you is a stack whose `api` and `worker`
+restart-loop on:
+
+```
+{"level": "error", "event": "service.misconfigured", "reason":
+ "PAINFREE_DATABASE_URL_FILE is '/run/secrets/painfree_database_url',
+  which could not be read: Permission denied"}
+```
+
+`init-secrets.sh` sets these modes for you; a hand-unpacked archive is the one
+path that does not go through it.
+
+`restore.sh` compares the custody key id the restored rows name against the one
+this deployment holds and exits 2 rather than letting you discover a mismatch at
+the next payment. `verify-keys.py` then opens every sealed key and signs a real
+`HPB` request — hand that document to an independent EBICS implementation if you
+want the proof to mean something.
+
+Two settings usually change with the address: the four port variables in `.env`
+(80 and 443 on a real hostname, which is what ACME needs), and
+`PAINFREE_OIDC_REDIRECT_URI`, which must also be registered with your identity
+provider or nobody can sign in to the console afterwards.
 
 ## Submitting a payment
 
@@ -242,6 +345,19 @@ Logs are one JSON object per line on stdout. No token, authorization code,
 session id or client secret ever reaches the stream.
 
 ## Backup, and the one thing no backup covers
+
+Three scripts, and which is for what:
+
+| | contains | for |
+|---|---|---|
+| `deploy/backup.sh` | the database only | the running backup. **Refuses to copy the custody secret** |
+| `deploy/backup-secrets.sh` | `deploy/secrets/` and the local CA, ~4 KB | the copy that goes into your password manager, off this host |
+| `deploy/snapshot.sh` | **both**, plus the config and certificates | moving to another machine |
+
+The separation that matters is between the first two: the lock and the key, kept
+in different places. `snapshot.sh` deliberately holds both, because a move needs
+both — which is why it will not write itself unencrypted. See
+[Backups, and moving to another server](#backups-and-moving-to-another-server).
 
 `deploy/backup.sh` dumps the database and `deploy/restore.sh` restores it. That
 covers the sealed keys, the order history, the idempotency ledger and the audit

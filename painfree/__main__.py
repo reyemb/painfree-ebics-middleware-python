@@ -1,6 +1,6 @@
 """``python -m painfree`` -- serve, work, migrate, and look after the keys and the accounts.
 
-Nine subcommands, because a deployment needs all nine: the long-running HTTP
+Ten subcommands, because a deployment needs all ten: the long-running HTTP
 server, the long-running upload worker, a one-shot schema upgrade for
 deployments that would rather migrate in a job than at startup
 (``PAINFREE_MIGRATE_ON_STARTUP=false``), a generator for
@@ -34,6 +34,12 @@ worker's environment carries the custody secret, and ``PAINFREE_ROLE=api``
 refuses to start with it. Running ``worker`` in a process configured as ``api``
 -- or ``serve`` in one configured as ``worker`` -- is a configuration error,
 not a warning.
+
+``deploy-scripts`` is the odd one out: it touches no database and reads no
+configuration, because it exists for a host that has neither yet. It writes the
+operator scripts -- ``snapshot.sh`` and the rest -- to stdout as a tar, so a
+machine holding nothing but podman and this image can still take the backup that
+moves the deployment somewhere else.
 
 Configuration errors are printed as one JSON line and exit non-zero, in the same
 shape as everything else on stdout, so a container that refuses to start is read
@@ -283,13 +289,14 @@ def main(argv: list[str] | None = None) -> int:
         "command", nargs="?", default="serve",
         choices=("serve", "worker", "migrate", "new-secret", "rekey",
                  "custody-status", "create-admin", "set-password",
-                 "unlock"),
+                 "unlock", "deploy-scripts"),
         help="serve the API (default), run the upload worker, bring the schema "
              "to head and exit, print a fresh key encryption secret, re-seal "
              "every stored secret under a rotated one, report which custody "
              "keys the stored material is sealed under, create the first local "
-             "administrator, set a local account's password, or clear a "
-             "sign-in lockout",
+             "administrator, set a local account's password, clear a "
+             "sign-in lockout, or write the operator scripts to stdout as a "
+             "tar",
     )
     parser.add_argument(
         "subject", nargs="?", default=None,
@@ -327,6 +334,16 @@ def main(argv: list[str] | None = None) -> int:
 
         print(new_secret())
         return 0
+
+    if arguments.command == "deploy-scripts":
+        # Before the configuration is read, for the reason new-secret is: the
+        # host running this has no deployment yet, and the scripts it is asking
+        # for are how it gets one. Requiring a database URL to hand out a shell
+        # script would make the command useless exactly when it is needed.
+        from painfree.deployscripts import main as write_deploy_scripts
+
+        return write_deploy_scripts(
+            sys.stdout.buffer, isatty=sys.stdout.isatty())
 
     try:
         settings = load_settings()

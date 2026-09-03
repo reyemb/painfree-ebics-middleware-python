@@ -23,3 +23,15 @@
 # Python the developer happened to have.
 painfree/**/__pycache__/
 painfree/**/*.pyc
+
+# The operator scripts, named one by one rather than as `!deploy/`: that
+# directory also holds `secrets/` on a running deployment, and an allow-list
+# that admits the directory would admit the custody secret into a published
+# image the first time somebody ran the stack from a checkout.
+!deploy/Caddyfile
+!deploy/backup.sh
+!deploy/backup-secrets.sh
+!deploy/init-secrets.sh
+!deploy/restore.sh
+!deploy/snapshot.sh
+!deploy/verify-keys.py

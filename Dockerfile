@@ -123,6 +123,28 @@ RUN groupadd --gid 10001 painfree \
 
 COPY --from=build --chown=root:root /opt/painfree /opt/painfree
 
+# The operator scripts, beside the interpreter rather than inside the package:
+# they are host scripts, run in a normal shell next to compose.yaml, and none
+# of them is importable Python. `python -m painfree deploy-scripts` writes this
+# directory to stdout as a tar, which is the only way onto a machine that has
+# podman and this image and no checkout.
+#
+# Root-owned and world-readable, like the rest of /opt/painfree: nothing here
+# is a secret, and the process that reads them runs as uid 10001.
+# Named one by one, not `deploy/*.sh`: that glob also catches build-image.sh,
+# which builds this image rather than operating a deployment. The same seven
+# names are in painfree/deployscripts.py and in .dockerignore, and
+# tests/test_deploy_scripts.py fails if the three ever disagree.
+COPY --chown=root:root \
+     deploy/Caddyfile \
+     deploy/backup-secrets.sh \
+     deploy/backup.sh \
+     deploy/init-secrets.sh \
+     deploy/restore.sh \
+     deploy/snapshot.sh \
+     deploy/verify-keys.py \
+     /opt/painfree/deploy/
+
 ENV PATH="/opt/painfree/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \

@@ -21,12 +21,78 @@
 #   - state/caddy-data, state/caddy-config               (TLS certs + local CA)
 #   - compose.yaml, .env, deploy/, and the .md files     (how to run it again)
 #
-#   deploy/snapshot.sh [destination-directory]      # default: ./backups
+# This archive is the bank access. It carries the custody secret and the
+# ciphertext that secret opens, together, which is the one combination that is
+# never supposed to sit in one place unprotected -- so the encryption is not a
+# step you remember afterwards, it is how the file is written:
+#
+#   deploy/snapshot.sh --encrypt-to age1… [destination]   # a public key
+#   deploy/snapshot.sh --encrypt-to recipients.txt [dest] # or a file of them
+#   deploy/snapshot.sh --passphrase [destination]         # prompts twice
+#   deploy/snapshot.sh --plaintext [destination]          # deliberate, and said
+#
+# There is no default. A snapshot with no choice made refuses, because the
+# failure it prevents is silent: an unencrypted archive works perfectly, and is
+# indistinguishable from a good one until somebody else reads it.
+#
+# The tar is piped straight into `age` and never becomes a file, so the
+# plaintext does not touch the disk even briefly -- it cannot be left behind by
+# an interrupted run, and it cannot be recovered from free space afterwards.
+#
+#   destination defaults to ./backups
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
+
+mode=""
+recipient=""
+while [ $# -gt 0 ]; do
+    case $1 in
+        --encrypt-to) mode=recipient; recipient=${2:?--encrypt-to needs a recipient or a file}; shift 2 ;;
+        --passphrase) mode=passphrase; shift ;;
+        --plaintext)  mode=plaintext;  shift ;;
+        -h|--help)    sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        --*)          echo "unknown option: $1" >&2; exit 2 ;;
+        *)            break ;;
+    esac
+done
 destination=${1:-$root/backups}
+
+if [ -z "$mode" ]; then
+    cat >&2 <<'REFUSE'
+snapshot.sh writes an archive containing the custody secret AND the database it
+opens. Say how it should be protected -- there is no default, on purpose:
+
+    deploy/snapshot.sh --encrypt-to age1…          a recipient's public key
+    deploy/snapshot.sh --encrypt-to recipients.txt a file of public keys
+    deploy/snapshot.sh --passphrase                a passphrase, typed twice
+    deploy/snapshot.sh --plaintext                 no encryption, deliberately
+
+`age-keygen -o key.age` makes a key pair; the line it prints as "public key" is
+what --encrypt-to takes, and the file it writes is what decrypts. Keep that file
+somewhere other than the machine being backed up -- a key stored beside its own
+ciphertext protects nothing.
+
+Without age installed, use --plaintext and encrypt it yourself:
+
+    deploy/snapshot.sh --plaintext
+    openssl enc -aes-256-ctr -pbkdf2 -iter 600000 -salt \
+        -in backups/painfree-….tar.gz -out backups/painfree-….tar.gz.enc
+    shred -u backups/painfree-….tar.gz
+
+That leaves the plaintext on disk between the two commands, which is why it is
+the fallback and not the recommendation.
+REFUSE
+    exit 2
+fi
+
+if [ "$mode" != "plaintext" ] && ! command -v age >/dev/null 2>&1; then
+    echo "age is not installed, and --encrypt-to/--passphrase need it." >&2
+    echo "Install it (apt install age, brew install age, nix profile install nixpkgs#age)" >&2
+    echo "or run --plaintext and encrypt the result yourself; see --help." >&2
+    exit 2
+fi
 
 compose=${COMPOSE:-}
 if [ -z "$compose" ]; then
@@ -88,20 +154,77 @@ cat > "$staging/MANIFEST.json" <<JSON
 JSON
 
 archive="$destination/painfree-$stamp.tar.gz"
-tar -C "$work" -czf "$archive" "painfree-$stamp"
-chmod 600 "$archive"
+
+# umask before the file exists, not chmod after it: between a create at 0644 and
+# a chmod there is a window in which anything on the host can open it, and this
+# is the file that is worth opening.
+old_umask=$(umask)
+umask 077
+
+case $mode in
+    recipient)
+        # -R for a file of public keys, -r for one on the command line. A public
+        # key is not secret, so passing it as an argument is fine -- unlike the
+        # passphrase, which age reads from the terminal for that reason.
+        archive="$archive.age"
+        if [ -f "$recipient" ]; then
+            tar -C "$work" -czf - "painfree-$stamp" | age -R "$recipient" > "$archive"
+        else
+            tar -C "$work" -czf - "painfree-$stamp" | age -r "$recipient" > "$archive"
+        fi
+        ;;
+    passphrase)
+        archive="$archive.age"
+        tar -C "$work" -czf - "painfree-$stamp" | age -p > "$archive"
+        ;;
+    plaintext)
+        tar -C "$work" -czf - "painfree-$stamp" > "$archive"
+        ;;
+esac
+umask "$old_umask"
+
+# `set -o pipefail` is on, so a failed tar or a failed age has already stopped
+# the script -- but a zero-length archive is the shape a half-written one takes,
+# and an operator who is told "wrote 0 B" and reads past it has no backup.
+if [ ! -s "$archive" ]; then
+    rm -f "$archive"
+    echo "the archive came out empty; nothing was written" >&2
+    exit 1
+fi
 
 cat >&2 <<NOTE
 
 wrote $archive
       $(du -h "$archive" | cut -f1), mode 0600
+NOTE
 
-It contains the custody secret AND the database it opens. Encrypt it before it
-goes anywhere you do not fully control:
+if [ "$mode" = "plaintext" ]; then
+    cat >&2 <<NOTE
+      NOT ENCRYPTED
 
-    age -p $archive          # or gpg -c $archive
+This file contains the custody secret AND the database it opens. Anyone who
+reads it has your bank access. Encrypt it before it is copied anywhere, and
+remove the plaintext afterwards:
 
-To restore on another machine: unpack it, put secrets/ back at deploy/secrets/
-and state/ back at state/, \`podman-compose up -d\`, then
-\`deploy/restore.sh painfree.dump\`.
+    openssl enc -aes-256-ctr -pbkdf2 -iter 600000 -salt \\
+        -in $archive -out $archive.enc
+    shred -u $archive
+NOTE
+fi
+
+cat >&2 <<NOTE
+
+To restore on another machine, on a host with podman and nothing else:
+
+    age -d painfree-$stamp.tar.gz.age | tar xz     # or: tar xzf … if plaintext
+    cd painfree-$stamp
+    mkdir -p deploy && mv secrets deploy/secrets
+    chmod 700 deploy/secrets && chmod 444 deploy/secrets/*
+    podman-compose up -d
+    deploy/restore.sh painfree.dump
+
+The two chmods are not decoration. The secret files are bind-mounted into a
+container that runs as an unprivileged uid of its own, so they have to be
+readable by *other*; the 0700 directory is what keeps them private. A 0600 file
+owned by you is a stack that restart-loops on "Permission denied".
 NOTE
