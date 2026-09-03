@@ -223,7 +223,18 @@ button[disabled], button[disabled]:hover {
   flex-wrap: wrap;
   align-items: center;
 }
-.actions form { margin: 0; }
+/* A form is a block, so its own controls stacked while the single-button forms
+   beside them centred against the taller stack -- four action groups on three
+   different baselines. Each form is a row of its own, which puts them all on
+   one. No form inside `.actions` carries a `<label>`, so nothing here ends up
+   with a label beside its field. */
+.actions form {
+  margin: 0;
+  display: flex;
+  gap: var(--pf-space-2);
+  align-items: center;
+  flex-wrap: wrap;
+}
 p.actions { margin-bottom: var(--pf-space-4); }
 
 /* --- text fields -----------------------------------------------------------
@@ -423,3 +434,12 @@ th.num, td.num {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+
+/* An escape hatch: present, and not competing with the field it backs up. */
+details.pf-escape { margin: var(--pf-space-2) 0 var(--pf-space-4); }
+details.pf-escape > summary {
+  cursor: pointer;
+  color: var(--pf-on-surface-variant);
+  font: var(--pf-body-small);
+}
+details.pf-escape > summary:hover { color: var(--pf-primary); }

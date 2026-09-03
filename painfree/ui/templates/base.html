@@ -138,7 +138,7 @@
 
     <details class="pf-menu pf-profile" name="pf-app-bar-menu">
       <summary class="pf-icon-button pf-avatar" aria-label="{{ t('profile.label') }}">
-        {% if principal %}{{ (principal.display_name or principal.subject)[:2] | upper }}{% else %}?{% endif %}
+        {% if principal %}{{ (principal.display_name or principal.subject) | initials }}{% else %}?{% endif %}
       </summary>
       <div class="pf-menu-panel">
         {% if principal %}

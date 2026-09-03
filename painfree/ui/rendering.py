@@ -111,6 +111,7 @@ def _environment() -> Environment:
     environment.filters["count"] = _count
     environment.filters["pretty_json"] = _pretty_json
     environment.filters["pretty_xml"] = _pretty_xml
+    environment.filters["initials"] = _initials
     environment.globals["stylesheet"] = Markup(STYLESHEET)
     environment.globals["theme_script"] = Markup(THEME_SCRIPT)
     return environment
@@ -231,6 +232,26 @@ def _formats(context: Any) -> i18n.Formats:
 def _pretty_json(value: Any) -> str:
     return json.dumps(value, indent=2, sort_keys=True, ensure_ascii=False,
                       default=str)
+
+
+def _initials(value: str | None) -> str:
+    """Initials for the avatar: one letter per name, not two off the front.
+
+    "Bastian Meyer" is `BM`. It used to be `BA`, because the template sliced
+    the first two characters -- which is right for a single word and wrong for
+    every person with a surname.
+
+    A subject with no display name is whatever the provider issued, often a
+    UUID, and there are no names in it to take letters from. Two characters off
+    the front is the honest answer there.
+    """
+    parts = [part for part in (value or "").split() if part]
+    if not parts:
+        return "?"
+    if len(parts) == 1:
+        return parts[0][:2].upper()
+    # First and last: a middle name should not displace the surname.
+    return (parts[0][0] + parts[-1][0]).upper()
 
 
 def _pretty_xml(value: str | bytes) -> str:

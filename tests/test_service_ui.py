@@ -627,3 +627,20 @@ def test_the_commit_appears_beside_it_only_when_the_build_set_one(
             custody_settings.model_copy(update={"git_sha": "unknown"}))) as plain:
         page = plain.get("/ui/connections", headers=dev_credentials())
     assert "unknown" not in page.text
+
+
+def test_the_avatar_takes_one_letter_per_name(console):
+    """`Bastian Meyer` is `BM`.
+
+    It was `BA`: the template sliced the first two characters, which is right
+    for a single word and wrong for everyone with a surname.
+    """
+    from painfree.ui.rendering import _initials
+
+    assert _initials("Bastian Meyer") == "BM"
+    assert _initials("Anna Maria Müller") == "AM", "a middle name is not the surname"
+    assert _initials("Bastian") == "BA", "one word has no second name to take"
+    # An OIDC subject with no display name is whatever the provider issued.
+    assert _initials("2db0ebe3-cb34-4c1e") == "2D"
+    for empty in ("", "   ", None):
+        assert _initials(empty) == "?"

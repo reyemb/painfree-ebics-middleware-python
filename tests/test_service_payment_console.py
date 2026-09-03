@@ -461,3 +461,22 @@ def test_the_preview_indents_the_document_and_says_it_did(console):
     # And the filter never raises on a display path.
     assert _pretty_xml(b"not xml") == "not xml"
     assert _pretty_xml("not xml either") == "not xml either"
+
+
+def test_the_typed_iban_is_folded_away_but_still_works(console):
+    """Present, and not competing with the field it backs up.
+
+    The published list can be empty, stale, or miss the account somebody needs,
+    so a form without an override refuses a payment the bank would have taken.
+    On a connection with one account it is also a second IBAN field nobody
+    needs -- and its placeholder read as a filled value, which is what made the
+    old datalist confusing in the first place.
+    """
+    _htd(console)
+    page = console.get(f"/ui/connections/{CONNECTION}/payment").text
+
+    assert "<details" in page, "the override is folded away, not removed"
+    assert 'name="debtor_iban_other"' in page, "and it is still there"
+    # No placeholder that reads as a value in a field that takes precedence.
+    block = page[page.index('name="debtor_iban_other"'):]
+    assert "placeholder" not in block[:200]

@@ -63,10 +63,20 @@
     </option>
     {% endfor %}
   </select>
-  <label for="debtor_iban_other">{{ t('payment_new.debtor_iban_other') }}
-    <span class="hint">{{ t('payment_new.debtor_iban_other_hint') }}</span></label>
-  <input type="text" id="debtor_iban_other" name="debtor_iban_other" class="mono"
-         value="" placeholder="CH93 0076 2011 6238 5295 7">
+  {# Folded away, not removed. The published list can be empty, stale, or
+     simply miss the account somebody needs, so a form without this refuses a
+     payment the bank would have taken -- but on a connection with one account
+     it is a second IBAN field nobody needs, and its placeholder reads as a
+     filled value, which is the thing that made the old datalist confusing.
+
+     `details` and not a script: closed until asked for, and the browser does
+     the asking. #}
+  <details class="pf-escape">
+    <summary>{{ t('payment_new.debtor_iban_other') }}</summary>
+    <p class="hint">{{ t('payment_new.debtor_iban_other_hint') }}</p>
+    <input type="text" id="debtor_iban_other" name="debtor_iban_other"
+           class="mono" value="">
+  </details>
   {% else %}
   <input type="text" id="debtor_iban" name="debtor_iban" required class="mono"
          value="{{ entered.debtor_iban }}"
