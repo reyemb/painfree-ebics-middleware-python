@@ -57,6 +57,10 @@ certificate.
 `podman-compose` works identically, and `deploy/build-image.sh` builds the image
 yourself if you would rather not run someone else's.
 
+Already running Traefik or nginx in front of everything? painfree goes behind it
+and stops terminating TLS itself — three settings, and
+[docs/reverse-proxy.md](docs/reverse-proxy.md) says what each one prevents.
+
 Everything that is not secret lives in `.env`. Every secret is a file under
 `deploy/secrets/`, generated once, mounted at runtime, and never baked into the
 image or committed. Everything that survives a restart is a directory under
@@ -315,7 +319,9 @@ the fact it reports, so a crash cannot lose it, and a redelivery carries the
 same `event_id`: deduplicate on that. Each request is signed
 `X-Painfree-Signature: v1=<hex>`, an HMAC-SHA256 over `"<timestamp>.<raw
 body>"` with the subscription's own secret. Verify over the bytes you received,
-not over a re-serialisation.
+not over a re-serialisation. The full contract — every event type, what each one
+carries and what it deliberately does not, the secret and its rotation, and the
+delivery guarantees — is [docs/webhooks.md](docs/webhooks.md).
 
 **Keys.** INI, HIA and HPB from the console, with a printable INI letter,
 renewal and suspension. The bank's keys are trusted only once you have compared
