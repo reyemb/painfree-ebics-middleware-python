@@ -156,20 +156,24 @@
   {% endfor %}
 </table>
 
-{# What the bank refused, in money. The counts on the report are the bank's own
-   and are counted by exception; this is counted over the message. #}
-<table class="plain">
-  {% for total in totals %}
-  <tr>
-    <td>{{ t('response.sent') }}</td>
-    <td>{{ total.count | count }} &middot; {{ total.sent | amount(total.currency) }}
-      {% if total.refused_count %}
-      <br><span class="tag rejected">{{ t('order.rejected_count') }}</span>
-      {{ total.refused_count | count }} &middot; {{ total.refused | amount(total.currency) }}
-      {% endif %}</td>
-  </tr>
-  {% endfor %}
-</table>
+{# What the message carried and what the bank did with it, read across. The
+   counts on the report are the bank's own and are counted by exception; these
+   are counted over the message, which is the only place they are complete.
+   One line per currency, because adding two currencies is not money. #}
+{% for total in totals %}
+<div class="totals">
+  <span><strong>{{ total.count | count }} &middot; {{ total.sent | amount(total.currency) }}</strong>
+    {{ t('response.sent') | lower }}</span>
+  <span class="accepted">{{ t('order.accepted_count') }}
+    {{ total.accepted_count | count }} &middot; {{ total.accepted | amount(total.currency) }}</span>
+  {% if total.refused_count %}
+  <span class="refused">{{ t('order.rejected_count') }}
+    {{ total.refused_count | count }} &middot; {{ total.refused | amount(total.currency) }}</span>
+  {% else %}
+  <span class="silent">{{ t('response.none_refused') }}</span>
+  {% endif %}
+</div>
+{% endfor %}
 
 {# The bank restating the count and the control sum is a check, not a field:
    two records of one message that can disagree, and a disagreement is the

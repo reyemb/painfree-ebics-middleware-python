@@ -544,3 +544,66 @@ tbody tr th[colspan], table tr th[colspan] {
 td > details[open] { padding-bottom: var(--pf-space-2); }
 td > details > table { margin-top: var(--pf-space-2); }
 td > details table.plain td:first-child { width: 170px; }
+
+/* The four figures an account statement is opened for, across the top of it.
+   Big because they are the point of the page: an operator opens a Kontoauszug
+   to read a balance, and reading one out of a two-column list of labels is
+   slower than reading it off a row of figures. `tabular-nums` so the four line
+   up with each other and with the ledger below. */
+.balband {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--pf-space-5);
+  align-items: end;
+}
+.balband .k {
+  font: var(--pf-label-medium);
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--pf-on-surface-variant);
+}
+.balband .v {
+  font: var(--pf-headline-small);
+  font-variant-numeric: tabular-nums;
+  margin-top: var(--pf-space-1);
+}
+.balband .v.negative { color: var(--pf-error); }
+.balband .v.credit { color: var(--pf-success); }
+.balband small { display: block; font: var(--pf-body-small); color: var(--pf-on-surface-variant); }
+
+/* Whether the arithmetic came out. Its own line under the band, because it is
+   a statement about the four figures rather than a fifth one. */
+.checkline {
+  margin: var(--pf-space-4) 0 0;
+  padding-top: var(--pf-space-3);
+  border-top: 1px solid var(--pf-outline-variant);
+  font: var(--pf-body-medium);
+  color: var(--pf-on-surface-variant);
+}
+.checkline .yes { color: var(--pf-success); font-weight: 600; }
+.checkline .no { color: var(--pf-error); font-weight: 600; }
+
+/* What a message carried and what the bank did with it, on one line under the
+   table rather than in a second table: three totals read across, and a table
+   of one row per currency read as though it were more data. */
+.totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pf-space-2) var(--pf-space-6);
+  align-items: baseline;
+  padding: var(--pf-space-3) var(--pf-space-4);
+  border-top: 1px solid var(--pf-outline-variant);
+  font: var(--pf-body-medium);
+  font-variant-numeric: tabular-nums;
+}
+.totals .accepted { color: var(--pf-success); }
+.totals .refused { color: var(--pf-error); }
+
+/* The number on a tab. Quiet, because it says how much is behind the label
+   rather than being the label: an operator reads the word and then the count. */
+.filters.shows .count {
+  color: var(--pf-on-surface-variant);
+  font-variant-numeric: tabular-nums;
+  padding-left: var(--pf-space-1);
+}
+.filters.shows a[aria-current="page"] .count { color: inherit; opacity: .75; }

@@ -677,6 +677,7 @@
   "response.level_transaction": "Transactions",
   "response.needs_payments_read": "The payments this report answers are not shown. Reading them needs the payment privilege on this connection.",
   "response.no_transfers": "The message this report answers could not be read.",
+  "response.none_refused": "none refused",
   "response.not_reported": "not reported",
   "response.not_restated": "The bank restated neither the number nor the control sum. The payments above come from the message this service sent.",
   "response.not_settled": "Nothing is settled by this. Settlement is <code>ACSC</code>, and money leaving the account is a booking on an account statement.",

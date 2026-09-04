@@ -31,23 +31,35 @@
 {# The four figures a statement is read for, and the one check worth doing on
    them. `reconciles` is exact: the arithmetic is decimal, over the digits the
    bank sent, against the closing balance the bank stated. #}
+{% set opening = payload.get('opening_balance') or {} %}
+{% set closing = payload.get('closing_balance') or {} %}
 <div class="card">
-<table class="plain">
-  <tr><td>{{ t('statement.opening_balance') }}</td>
-      <td class="num">{{ statement.opening_balance | amount(statement.currency) }}</td></tr>
-  <tr><td>{{ t('account.money_in') }}</td>
-      <td class="num">{{ ledger.credited | amount(statement.currency) }}
-        <span class="hint">{{ ledger.credits | count }}</span></td></tr>
-  <tr><td>{{ t('account.money_out') }}</td>
-      <td class="num">{{ ledger.debited | amount(statement.currency) }}
-        <span class="hint">{{ ledger.debits | count }}</span></td></tr>
-  <tr><td>{{ t('statements.closing_balance') }}</td>
-      <td class="num">{{ statement.closing_balance | amount(statement.currency) }}</td></tr>
-</table>
-<p class="hint">
-  {%- if ledger.reconciles %}{{ t('account.reconciles') }}
+<div class="balband">
+  <div>
+    <div class="k">{{ t('statement.opening_balance') }}</div>
+    <div class="v {{ 'negative' if statement.opening_balance is not none and statement.opening_balance < 0 }}">{{ statement.opening_balance | amount(statement.currency) }}</div>
+    <small>{{ opening.get('date') | day }}{% if opening.get('type') %} &middot; <code>{{ opening.get('type') }}</code>{% endif %}</small>
+  </div>
+  <div>
+    <div class="k">{{ t('account.money_in') }}</div>
+    <div class="v credit">{{ ledger.credited | amount(statement.currency) }}</div>
+    <small>{{ t('statements.entry_count', count=ledger.credits) }}</small>
+  </div>
+  <div>
+    <div class="k">{{ t('account.money_out') }}</div>
+    <div class="v">{{ ledger.debited | amount(statement.currency) }}</div>
+    <small>{{ t('statements.entry_count', count=ledger.debits) }}</small>
+  </div>
+  <div>
+    <div class="k">{{ t('statements.closing_balance') }}</div>
+    <div class="v {{ 'negative' if statement.closing_balance is not none and statement.closing_balance < 0 }}">{{ statement.closing_balance | amount(statement.currency) }}</div>
+    <small>{{ closing.get('date') | day }}{% if closing.get('type') %} &middot; <code>{{ closing.get('type') }}</code>{% endif %}</small>
+  </div>
+</div>
+<p class="checkline">
+  {%- if ledger.reconciles %}<span class="yes">&check;</span> {{ t('account.reconciles') }}
   {%- elif ledger.reconciles is none %}{{ t('account.no_opening') }}
-  {%- else %}{{ t('account.does_not_reconcile') }}{% endif %}
+  {%- else %}<span class="no">&times;</span> {{ t('account.does_not_reconcile') }}{% endif %}
 </p>
 </div>
 

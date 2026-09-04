@@ -677,6 +677,7 @@
   "response.level_transaction": "Transactions",
   "response.needs_payments_read": "Les paiements sur lesquels porte ce rapport ne sont pas affichés. Les lire demande le privilège de paiement sur cette connexion.",
   "response.no_transfers": "Le message sur lequel porte ce rapport n'a pas pu être lu.",
+  "response.none_refused": "aucun refusé",
   "response.not_reported": "non rapporté",
   "response.not_restated": "La banque n'a redonné ni le nombre ni la somme de contrôle. Les paiements ci-dessus viennent du message que ce service a envoyé.",
   "response.not_settled": "Rien n'est réglé pour autant. Le règlement est <code>ACSC</code>, et l'argent qui quitte le compte est une écriture sur un relevé de compte.",

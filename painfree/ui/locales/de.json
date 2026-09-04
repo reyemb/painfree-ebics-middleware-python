@@ -677,6 +677,7 @@
   "response.level_transaction": "Transaktionen",
   "response.needs_payments_read": "Die Zahlungen, zu denen dieser Bericht gehört, werden nicht gezeigt. Dafür ist die Zahlungsberechtigung auf dieser Verbindung nötig.",
   "response.no_transfers": "Die Nachricht, zu der dieser Bericht gehört, konnte nicht gelesen werden.",
+  "response.none_refused": "keine abgelehnt",
   "response.not_reported": "nicht gemeldet",
   "response.not_restated": "Die Bank hat weder die Anzahl noch die Kontrollsumme wiederholt. Die Zahlungen oben stammen aus der Nachricht, die dieser Dienst gesendet hat.",
   "response.not_settled": "Damit ist nichts abgewickelt. Die Abwicklung ist <code>ACSC</code>, und dass Geld das Konto verlässt, ist eine Buchung auf einem Kontoauszug.",

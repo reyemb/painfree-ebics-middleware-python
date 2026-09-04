@@ -677,6 +677,7 @@
   "response.level_transaction": "Transacciones",
   "response.needs_payments_read": "Los pagos a los que responde este informe no se muestran. Leerlos requiere el privilegio de pagos en esta conexión.",
   "response.no_transfers": "El mensaje al que responde este informe no se pudo leer.",
+  "response.none_refused": "ninguno rechazado",
   "response.not_reported": "no informado",
   "response.not_restated": "El banco no repitió ni el número ni la suma de control. Los pagos de arriba vienen del mensaje que envió este servicio.",
   "response.not_settled": "Con esto no se liquida nada. La liquidación es <code>ACSC</code>, y que el dinero salga de la cuenta es un movimiento en un extracto de cuenta.",

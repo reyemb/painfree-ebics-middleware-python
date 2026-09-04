@@ -719,6 +719,10 @@ def statements(request: Request, connection_id: str = "", message_type: str = ""
                             message_type=message_type or None, limit=100)
     return render(request, "statements.html",
                   statements=rows, family=family,
+                  counts=store.counts_by_family(
+                      connection_ids=allowed,
+                      message_type=message_type or None) if possible
+                  else dict.fromkeys(FAMILIES, 0),
                   connections=access.held(principal, _registry(request).all()),
                   message_types=store.message_types(),
                   status_codes=reconcile.STATUS_CODES,
@@ -835,6 +839,7 @@ def _money_by_currency(answers: list[tuple[Any, Any]]) -> list[dict[str, Any]]:
         row = totals.setdefault(transfer.currency or "", {
             "currency": transfer.currency, "count": 0,
             "sent": decimal.Decimal(0),
+            "accepted_count": 0, "accepted": decimal.Decimal(0),
             "refused_count": 0, "refused": decimal.Decimal(0)})
         row["count"] += 1
         try:
@@ -843,10 +848,13 @@ def _money_by_currency(answers: list[tuple[Any, Any]]) -> list[dict[str, Any]]:
             amount = None
         if amount is not None:
             row["sent"] += amount
-        if answer.refused:
-            row["refused_count"] += 1
-            if amount is not None:
-                row["refused"] += amount
+        # Refused is what the bank said no to; everything else is what it did
+        # not, which is not the same as what it took. A `PDNG` transfer counts
+        # here as not refused, because that is all anybody knows about it.
+        side = "refused" if answer.refused else "accepted"
+        row[side + "_count"] += 1
+        if amount is not None:
+            row[side] += amount
     return list(totals.values())
 
 

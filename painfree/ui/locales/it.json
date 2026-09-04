@@ -677,6 +677,7 @@
   "response.level_transaction": "Transazioni",
   "response.needs_payments_read": "I pagamenti a cui si riferisce questo rapporto non sono mostrati. Per leggerli serve il privilegio sui pagamenti su questa connessione.",
   "response.no_transfers": "Il messaggio a cui si riferisce questo rapporto non è stato leggibile.",
+  "response.none_refused": "nessuno rifiutato",
   "response.not_reported": "non comunicato",
   "response.not_restated": "La banca non ha ripetuto né il numero né la somma di controllo. I pagamenti qui sopra vengono dal messaggio che questo servizio ha inviato.",
   "response.not_settled": "Con questo non è regolato nulla. Il regolamento è <code>ACSC</code>, e il denaro che lascia il conto è una registrazione su un estratto conto.",

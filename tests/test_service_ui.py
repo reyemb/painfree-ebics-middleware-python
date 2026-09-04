@@ -509,6 +509,11 @@ def test_the_index_is_split_because_it_holds_two_kinds_of_document(console):
 
     accounts = client.get("/ui/statements", headers=_admin())
     assert accounts.status_code == 200
+    # Each tab says how much is behind it, so the half an operator is not
+    # looking at is not silently empty.
+    tabs = accounts.text.split('<div class="card">')[0]
+    assert "Account statements" in tabs and "Bank responses" in tabs
+    assert tabs.count('<span class="count">1</span>') == 2, tabs
     assert "CH5604835012345678009" in accounts.text
     assert "camt.053.001.08" in accounts.text
     assert "pain.002" not in accounts.text.split("<table")[1], \

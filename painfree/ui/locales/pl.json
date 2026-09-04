@@ -689,6 +689,7 @@
   "response.level_transaction": "Transakcje",
   "response.needs_payments_read": "Płatności, których dotyczy ten raport, nie są pokazane. Do ich odczytu potrzebne jest uprawnienie do płatności na tym połączeniu.",
   "response.no_transfers": "Wiadomości, której dotyczy ten raport, nie udało się odczytać.",
+  "response.none_refused": "żadna nie odrzucona",
   "response.not_reported": "nie podano",
   "response.not_restated": "Bank nie powtórzył ani liczby, ani sumy kontrolnej. Płatności powyżej pochodzą z wiadomości, którą wysłała ta usługa.",
   "response.not_settled": "Nic przez to nie zostało rozliczone. Rozliczenie to <code>ACSC</code>, a wyjście pieniędzy z rachunku to księgowanie na wyciągu.",

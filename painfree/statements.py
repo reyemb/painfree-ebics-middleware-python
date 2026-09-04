@@ -320,6 +320,32 @@ class StatementStore:
             return sorted(row[0] for row in connection.execute(
                 select(statement.c.message_type).distinct()))
 
+    def counts_by_family(self, *, connection_ids: Sequence[str] | None = None,
+                         connection_id: str | None = None,
+                         message_type: str | None = None) -> dict[str, int]:
+        """How many documents of each kind the filters in force would show.
+
+        On the tabs, so an operator can see that the other half has something in
+        it without going and looking. Counted under the *same* filters as the
+        table below, or the number would be about a page nobody is on.
+        """
+        found = {}
+        with self._engine.connect() as connection:
+            for family in FAMILIES:
+                query = select(func.count()).select_from(statement)
+                if connection_id:
+                    query = query.where(
+                        statement.c.connection_id == connection_id)
+                if connection_ids is not None:
+                    query = query.where(
+                        statement.c.connection_id.in_(list(connection_ids)))
+                if message_type:
+                    query = query.where(
+                        statement.c.message_type == message_type)
+                found[family] = connection.execute(
+                    _of_family(query, family)).scalar_one()
+        return found
+
     def count(self, connection_id: str) -> int:
         with self._engine.connect() as connection:
             return connection.execute(
