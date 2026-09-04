@@ -4,81 +4,83 @@
 <h1>{{ t('access.heading') }}</h1>
 <p class="lede">{{ t('access.lede') }}</p>
 
-<p class="lede">{{ t('access.lede_no_user_list') }}</p>
+{# Who may do what is people by connections by level, so it is drawn as that.
+   A list of people each carrying a list of their connections answers "what does
+   Olive hold" and makes "who can move money at this bank" a read of every row
+   and every sub-list. #}
+<p class="lede">{{ t('access.totals', people=subjects | length,
+                     connections=connections | length, movers=movers) }}</p>
 
-<p class="lede">{{ t('access.lede_oversight') }}</p>
-
-{% if oversight %}
-<div class="card">
-  <h2>{{ t('access.oversight_heading') }}</h2>
-  <p>{{ t('access.oversight_why') }}</p>
-  <ul>
-    {% for row in oversight %}
-    <li><a href="/ui/access/{{ row.subject }}"><code>{{ row.subject }}</code></a>
-        {% if row.display_name %}({{ row.display_name }}){% endif %}</li>
-    {% endfor %}
-  </ul>
-</div>
-{% endif %}
-
-{% if ungranted %}
-<div class="card">
-  <h2>{{ t('access.ungranted_heading') }}</h2>
-  <p>{{ t('access.ungranted_why') }}</p>
-  <ul>
-    {% for row in ungranted %}
-    <li><a href="/ui/access/{{ row.subject }}"><code>{{ row.subject }}</code></a>
-        {% if row.display_name %}({{ row.display_name }}){% endif %}</li>
-    {% endfor %}
-  </ul>
+{% if stranded %}
+{# A grant is inert without a way to use it. Under `basic` this is the ordinary
+   consequence of granting before the account exists, and the console could not
+   show it at all until `basic_account` was joined in. #}
+<div class="card warn">
+  <strong>{{ t('access.stranded_heading', count=stranded | length) }}</strong>
+  <p>{{ t('access.stranded_why') }}</p>
+  <p>{% for subject in stranded %}<code>{{ subject }}</code> {% endfor %}</p>
 </div>
 {% endif %}
 
 <div class="card">
-<h2>{{ t('access.known_subjects') }}</h2>
 {% if subjects %}
-<table>
-  <tr><th>{{ t('access.subject') }}</th><th>{{ t('access.name') }}</th>
-      <th>{{ t('access.last_seen') }}</th><th>{{ t('access.access') }}</th></tr>
+<table class="matrix">
+  <tr><th>{{ t('access.person') }}</th><th>{{ t('access.signs_in_with') }}</th>
+      {% for row in connections %}
+      <th class="conn"><a href="/ui/connections/{{ row.connection_id }}/access"><code>{{ row.connection_id }}</code></a></th>
+      {% endfor %}
+      <th>{{ t('access.last_seen') }}</th></tr>
   {% for row in subjects %}
   <tr>
     {# The subject is the identity provider's `sub` claim, verbatim: an
        identifier, never translated and never reformatted. #}
-    <td><a href="/ui/access/{{ row.subject }}"><code>{{ row.subject }}</code></a></td>
-    <td>{{ row.display_name or '—' }}</td>
-    <td>{{ row.last_seen_at | moment }}</td>
+    <td><a href="/ui/access/{{ row.subject }}">{{ row.display_name or row.subject }}</a>
+        {% if row.display_name %}<br><small class="mono">{{ row.subject }}</small>{% endif %}</td>
     <td>
-      {% if row.oversight %}
-        <span class="tag viewer">oversight</span> {{ t('access.every_connection_readonly') }}{% if row.grants %}<br>{% endif %}
-      {% endif %}
-      {% if row.grants %}
-        {% for grant in row.grants %}
-          <a href="/ui/connections/{{ grant.connection_id }}/access"><code>{{ grant.connection_id }}</code></a>
-          <span class="tag {{ grant.level.value }}">{{ grant.level.value }}</span>{% if not loop.last %}<br>{% endif %}
-        {% endfor %}
-      {% elif not row.oversight %}
-        <span class="empty">{{ t('access.none') }}</span>
-      {% endif %}
+      {# `cannot sign in` is only true under `basic`, where a password is the
+         only credential. Development mode accepts a header from anybody and
+         `oidc` accounts live at the provider, so neither can be answered from
+         what this deployment stores. #}
+      {%- if row.subject in password_holders %}<span class="tag viewer">{{ t('access.signs_in_password') }}</span>
+      {%- elif auth_mode == 'oidc' %}<span class="tag viewer">{{ t('access.signs_in_provider') }}</span>
+      {%- elif auth_mode == 'basic' and (row.grants or row.oversight) %}<span class="tag failed">{{ t('access.cannot_sign_in') }}</span>
+      {%- else %}<span class="empty">—</span>{% endif %}
     </td>
+    {% if row.oversight %}
+    {# Oversight names no connection, so it is a band rather than a cell: drawing
+       it inside one column would be drawing something the model does not have. #}
+    <td class="span" colspan="{{ connections | length }}">
+      <span class="tag viewer">oversight</span> {{ t('access.every_connection_readonly') }}</td>
+    {% else %}
+    {% for connection in connections %}
+    {# `first` on an empty sequence raises under `StrictUndefined`, and most
+       cells are empty: a matrix is mostly the absence of a grant. #}
+    {% set held = row.grants | selectattr('connection_id', 'equalto', connection.connection_id) | list %}
+    <td class="cell">{% if held %}<span class="tag {{ held[0].level.value }}">{{ held[0].level.value }}</span>
+        {% else %}<span class="none">·</span>{% endif %}</td>
+    {% endfor %}
+    {% endif %}
+    <td>{{ row.last_seen_at | moment }}</td>
   </tr>
   {% endfor %}
 </table>
+<p class="hint">{{ t('access.narrowing_note') }}</p>
 {% else %}
 <p class="empty">{{ t('access.nobody') }}</p>
 {% endif %}
 </div>
 
+{% if ungranted %}
 <div class="card">
-<h2>{{ t('nav.connections') }}</h2>
-<p>{{ t('access.other_way_round') }}</p>
-{% if connections %}
-<ul>
-  {% for row in connections %}
-  <li><a href="/ui/connections/{{ row.connection_id }}/access"><code>{{ row.connection_id }}</code></a></li>
-  {% endfor %}
-</ul>
-{% else %}
-<p class="empty">{{ t('access.no_connections') }}</p>
+  <strong>{{ t('access.ungranted_heading') }}</strong>
+  <p>{{ t('access.ungranted_why') }}</p>
+  <p>{% for row in ungranted %}<a href="/ui/access/{{ row.subject }}"><code>{{ row.subject }}</code></a>
+     {% endfor %}</p>
+</div>
 {% endif %}
+
+<div class="card">
+<p class="hint">{{ t('access.lede_no_user_list') }}</p>
+<p class="hint">{{ t('access.lede_oversight') }}</p>
 </div>
 {% endblock %}

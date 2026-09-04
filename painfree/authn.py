@@ -427,7 +427,7 @@ class Authenticator:
                      reason="names this deployment does not map travelled with "
                             "ones it does; they grant nothing and are not kept")
         reach = self.grants.reach_for(subject)
-        return identity.build_principal(
+        principal = identity.build_principal(
             subject=subject,
             issuer=str(claims.get("iss")),
             method=method,
@@ -441,6 +441,18 @@ class Authenticator:
             expires_at=tokens.expiry_of(claims),
             display_name=claims.get("name") or claims.get("preferred_username"),
         )
+        if principal.narrowed:
+            # The grants said one thing and the token said less. Legitimate --
+            # that is what a narrowed token is for -- and worth a line either
+            # way, because the symptom of an accidental one is a correct grant
+            # and an empty console with nothing to read.
+            log.info("auth.scopes_narrowed", subject=subject,
+                     claim=settings.oidc_scope_claim,
+                     scopes=sorted(scope.value for scope in principal.scopes),
+                     reason="the token's scope claim named scopes of this "
+                            "service and this caller holds only those, which "
+                            "is fewer than its grants carry")
+        return principal
 
 
 # --- reading a Basic credential ---------------------------------------------

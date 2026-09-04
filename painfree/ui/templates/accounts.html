@@ -8,64 +8,84 @@
 <p class="lede"><strong>{{ t('accounts.other_mode') }}</strong></p>
 {% endif %}
 
+{# Under a provider, every password here is a credential sign-in refuses. The
+   page already said a new one could not sign in; these already cannot, and
+   saying which is the difference between a warning and a fact. #}
+{% if inert %}
+<div class="card warn">
+  <strong>{{ t('accounts.inert_heading', count=inert | length) }}</strong>
+  <p>{{ t('accounts.inert_body') }}</p>
+  <p>{% for subject in inert %}<code>{{ subject }}</code> {% endfor %}</p>
+</div>
+{% endif %}
+
 <div class="card">
 <h2>{{ t('accounts.list_heading') }}</h2>
 {% if accounts %}
+{# One row per account, and the levers behind a disclosure. Four live forms per
+   account put `Delete` permanently on screen beside `Set password`; a
+   `<details>` is a real button for a keyboard and needs no script. #}
 <table>
-  <tr><th>{{ t('access.subject') }}</th><th>{{ t('access.name') }}</th>
-      <th>{{ t('api.role') }}</th><th>{{ t('accounts.password_set') }}</th>
-      <th>{{ t('accounts.status') }}</th></tr>
+  <tr><th>{{ t('accounts.account') }}</th><th>{{ t('api.role') }}</th>
+      <th>{{ t('accounts.password_set') }}</th><th>{{ t('accounts.status') }}</th><th></th></tr>
   {% for row in accounts %}
   <tr>
     {# The subject is the key every grant names. It is an identifier: never
        translated, never reformatted. #}
-    <td><a href="/ui/access/{{ row.subject }}"><code>{{ row.subject }}</code></a></td>
-    <td>{{ row.display_name or '—' }}</td>
+    <td>{{ row.display_name or '—' }}
+        <br><small><a href="/ui/access/{{ row.subject }}"><code>{{ row.subject }}</code></a></small></td>
     <td><span class="tag {{ 'operator' if row.role.value == 'admin' else 'viewer' }}">{{ row.role.value }}</span></td>
     <td>{{ row.password_changed_at | moment }}</td>
-    <td>{% if row.disabled %}{{ t('accounts.suspended') }}{% else %}{{ t('accounts.active') }}{% endif %}</td>
-  </tr>
-  <tr>
-    <td colspan="5">
-      <div class="actions">
-        <form method="post" action="/ui/accounts/{{ row.subject }}/password">
-          {# The account the password belongs to, present and hidden. A
-             password field with no username beside it is a field a password
-             manager files under the wrong account, and Chrome says so in the
-             console -- which is how this was found. The view ignores the
-             field: the subject is in the path. #}
-          <input type="text" name="account" value="{{ row.subject }}"
-                 autocomplete="username" class="visually-hidden"
-                 tabindex="-1" aria-hidden="true" readonly>
-          <input type="password" name="password" autocomplete="new-password"
-                 minlength="{{ minimum_password_length }}" required
-                 aria-label="{{ t('accounts.new_password') }}"
-                 placeholder="{{ t('accounts.new_password') }}">
-          <button type="submit">{{ t('accounts.set_password') }}</button>
-        </form>
-        <form method="post" action="/ui/accounts/{{ row.subject }}/role">
-          <select name="role">
-            {% for name in roles %}
-            <option value="{{ name }}"{{ ' selected' if name == row.role.value else '' }}>{{ name }}</option>
-            {% endfor %}
-          </select>
-          <button type="submit" class="secondary">{{ t('accounts.change_role') }}</button>
-        </form>
-        <form method="post" action="/ui/accounts/{{ row.subject }}/suspend">
-          <input type="hidden" name="disabled" value="{{ 'false' if row.disabled else 'true' }}">
-          <button type="submit" class="secondary">
-            {% if row.disabled %}{{ t('accounts.resume') }}{% else %}{{ t('accounts.suspend') }}{% endif %}</button>
-        </form>
-        <form method="post" action="/ui/accounts/{{ row.subject }}/delete">
-          <input type="hidden" name="confirm" value="delete">
-          <button type="submit" class="secondary">{{ t('accounts.delete') }}</button>
-        </form>
-      </div>
+    <td>{% if row.disabled %}<span class="tag paused">{{ t('accounts.suspended') }}</span>
+        {% else %}<span class="tag ready">{{ t('accounts.active') }}</span>{% endif %}</td>
+    <td>
+      <details>
+        <summary>{{ t('accounts.manage') }}</summary>
+        <div class="stack">
+          <form method="post" action="/ui/accounts/{{ row.subject }}/password">
+            {# A password field with no username beside it is a field a password
+               manager files under the wrong account, and Chrome says so in the
+               console. The view ignores it: the subject is in the path. #}
+            <input type="text" name="account" value="{{ row.subject }}"
+                   autocomplete="username" class="visually-hidden"
+                   tabindex="-1" aria-hidden="true" readonly>
+            <div class="actions">
+              <input type="password" name="password" autocomplete="new-password"
+                     minlength="{{ minimum_password_length }}" required
+                     aria-label="{{ t('accounts.new_password') }}"
+                     placeholder="{{ t('accounts.new_password') }}">
+              <button type="submit">{{ t('accounts.set_password') }}</button>
+            </div>
+          </form>
+          <form method="post" action="/ui/accounts/{{ row.subject }}/role">
+            <div class="actions">
+              <select name="role" aria-label="{{ t('api.role') }}">
+                {% for name in roles %}
+                <option value="{{ name }}"{{ ' selected' if name == row.role.value else '' }}>{{ name }}</option>
+                {% endfor %}
+              </select>
+              <button type="submit" class="secondary">{{ t('accounts.change_role') }}</button>
+            </div>
+          </form>
+          {# The two that stop somebody signing in, separated from the two that
+             do not, with the reversible one named as reversible. #}
+          <div class="destructive">
+            <span class="hint">{{ t('accounts.stops_sign_in') }}</span>
+            <div class="actions">
+              <form method="post" action="/ui/accounts/{{ row.subject }}/suspend">
+                <input type="hidden" name="disabled" value="{{ 'false' if row.disabled else 'true' }}">
+                <button type="submit" class="secondary">
+                  {% if row.disabled %}{{ t('accounts.resume') }}{% else %}{{ t('accounts.suspend') }}{% endif %}</button>
+              </form>
+              <a class="button danger" href="/ui/accounts/{{ row.subject }}/delete">{{ t('accounts.delete') }}</a>
+            </div>
+          </div>
+        </div>
+      </details>
     </td>
   </tr>
   {% endfor %}
 </table>
-<p><small>{{ t('accounts.delete_keeps_grants') }}</small></p>
 {% else %}
 <p class="empty">{{ t('accounts.none') }}</p>
 {% endif %}

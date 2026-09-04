@@ -257,3 +257,26 @@ def test_the_api_returns_every_correlation_id(trail):
         "outcome", "request_id", "connection_id", "order_id", "job_id",
         "idempotency_key", "detail"}
     assert events[0]["idempotency_key"] == "idem-1"
+
+
+def test_rows_from_one_action_are_grouped_by_the_request_they_share():
+    """One person pressing one button writes several rows. They said so already.
+
+    `request_id` is on every row and was printed in the corner of a cell. Read
+    as rows of equal weight, accepting a payment looked like several unrelated
+    things happening at the same instant.
+    """
+    from painfree.ui.reference_views import _by_request
+
+    rows = [{"request_id": "r1", "seq": 3}, {"request_id": "r1", "seq": 2},
+            {"request_id": "r2", "seq": 1}, {"request_id": None, "seq": 0}]
+    groups = _by_request(rows)
+    assert [len(group["rows"]) for group in groups] == [2, 1, 1]
+    assert [group["request_id"] for group in groups] == ["r1", "r2", None]
+    # Never re-ordered, and never gathered across a gap: the page is a cursor
+    # over an append sequence, so a request straddling a page boundary is two
+    # groups rather than a row shown on a page its sequence says it is not on.
+    straddling = _by_request([{"request_id": "r1", "seq": 5},
+                              {"request_id": "r2", "seq": 4},
+                              {"request_id": "r1", "seq": 3}])
+    assert [group["request_id"] for group in straddling] == ["r1", "r2", "r1"]

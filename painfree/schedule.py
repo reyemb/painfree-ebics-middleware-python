@@ -284,6 +284,27 @@ class Window:
         return max(0, self.days_pending - 1)
 
     @property
+    def share_behind(self) -> int:
+        """How much of the window the next run asks for is already overdue, 0-100.
+
+        The one number a picture of coverage needs. Today is always in the
+        pending window and is never a gap, so a schedule that is up to date has
+        a window of one day and nothing overdue in it; one twelve days behind
+        has thirteen, of which twelve are. A band drawn to this reads *how much
+        of what we are about to ask for should already have been answered*,
+        which is the question, and it stays honest for an undated schedule by
+        being zero rather than by guessing at a span.
+        """
+        if not self.behind:
+            # A schedule that has never fetched anything is not behind, however
+            # wide the window it is about to ask for -- the same rule
+            # :attr:`behind` states, and this has to agree with it or a picture
+            # drawn from the two contradicts itself.
+            return 0
+        total = self.days_pending
+        return round(self.days_behind * 100 / total) if total else 0
+
+    @property
     def behind(self) -> bool:
         """Are there days the bank answered *past* and has not answered for?
 

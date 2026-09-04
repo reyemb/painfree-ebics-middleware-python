@@ -444,6 +444,32 @@ def test_the_marker_never_refuses_a_machine(world):
     assert client.get("/v1/connections", headers=root()).status_code == 200
 
 
+def test_the_access_page_says_who_can_sign_in_and_who_only_looks_granted(world):
+    """A grant is inert without a way to use it, and nothing joined the two.
+
+    `basic_account` holds the local passwords and the grant tables hold the
+    privilege. Under `basic` a subject granted before its account exists can
+    never sign in, and until these were read together that looked exactly like
+    a working grant.
+    """
+    client, app, engine = world
+    page = client.get("/ui/access", headers=root(**BROWSER))
+    assert page.status_code == 200
+    assert "Signs in with" in page.text
+    assert "password" in page.text
+
+    # Grant somebody who has no account at all.
+    form = {**root(**BROWSER),
+            "content-type": "application/x-www-form-urlencoded"}
+    assert client.post(f"/ui/connections/{basic_world.MINE}/access",
+                       headers=form, follow_redirects=False,
+                       content="subject=ghost&level=viewer").status_code == 303
+    stranded = client.get("/ui/access", headers=root(**BROWSER))
+    assert "ghost" in stranded.text
+    assert "cannot sign in" in stranded.text
+    assert "nobody can use" in stranded.text
+
+
 def test_the_console_manages_accounts_and_lockouts(world):
     """The pages an administrator uses when the console is the only surface."""
     client, app, _ = world
@@ -478,10 +504,29 @@ def test_the_console_manages_accounts_and_lockouts(world):
     assert client.get("/auth/me", headers=basic(
         "newcomer", "a-long-enough-password")).status_code == 200
 
-    # A form that does not confirm changes nothing.
+    # A form that does not confirm changes nothing, and the confirmation is the
+    # subject itself: a hidden field carrying a fixed word is a field the form
+    # fills in, and what it guarded against was nothing.
     assert client.post(f"/ui/accounts/{ROOT}/delete", headers=form,
                        content="confirm=no").status_code == 409
+    assert client.post(f"/ui/accounts/{ROOT}/delete", headers=form,
+                       content="confirm=delete").status_code == 409
     assert client.get("/auth/me", headers=root()).status_code == 200
+
+    # Deleting has a page of its own, the way replaying an order does. It names
+    # the account, and it names what survives: the grants.
+    confirm = client.get("/ui/accounts/newcomer/delete", headers=root(**BROWSER))
+    assert confirm.status_code == 200
+    assert "newcomer" in confirm.text
+    assert "grants stay" in confirm.text.lower()
+    assert client.get("/ui/accounts/nobody-at-all/delete",
+                      headers=root(**BROWSER)).status_code == 404
+
+    # And typing it is what deletes.
+    gone = client.post("/ui/accounts/newcomer/delete", headers=form,
+                       content="confirm=newcomer", follow_redirects=False)
+    assert gone.status_code == 303
+    assert _accounts(app).get("newcomer") is None
 
 
 

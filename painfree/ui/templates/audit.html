@@ -4,6 +4,16 @@
 <h1>{{ t('audit.heading') }}</h1>
 <p class="lede">{{ t('audit.lede') }}</p>
 
+{# Four links rather than a form, so each is a URL an operator can keep and the
+   seven-control form is there for the day somebody needs it. #}
+<p class="filters shows">
+  <a href="/ui/audit"{% if not filters.outcome and not filters.actor_id %} aria-current="true"{% endif %}>{{ t('audit.quick_everything') }}</a>
+  <a href="/ui/audit?outcome=failure"{% if filters.outcome == 'failure' %} aria-current="true"{% endif %}>{{ t('audit.quick_failures') }}</a>
+  <a href="/ui/audit?since={{ today }}"{% if filters.since == today %} aria-current="true"{% endif %}>{{ t('audit.quick_today') }}</a>
+</p>
+
+<details class="pf-escape"{% if filters.action or filters.order_id or filters.connection_id %} open{% endif %}>
+<summary>{{ t('audit.all_filters') }}</summary>
 <form class="filters" method="get" action="/ui/audit">
   <div><label for="connection_id">{{ t('common.connection') }}</label>
     <select id="connection_id" name="connection_id">
@@ -45,35 +55,48 @@
   <button type="submit" class="secondary">{{ t('common.filter') }}</button>
   <a class="button secondary" href="/ui/audit">{{ t('audit.clear') }}</a>
 </form>
+</details>
 
 <div class="card">
 {% if events %}
 <table>
   <tr><th>{{ t('common.when') }}</th><th>{{ t('audit.action') }}</th>
-      <th>{{ t('order.who') }}</th><th>{{ t('audit.concerns') }}</th>
-      <th>{{ t('error.detail') }}</th></tr>
-  {% for row in events %}
-  <tr>
+      <th>{{ t('audit.concerns') }}</th><th>{{ t('error.detail') }}</th></tr>
+  {% for group in groups %}
+  {# One operator action and the rows it wrote. They already shared a
+     `request_id`; read as rows of equal weight, one person pressing one button
+     looked like several unrelated things. #}
+  {% if group.request_id and group.rows | length > 1 %}
+  <tr class="reqhead">
+    <td colspan="4">{{ group.rows[0].occurred_at | moment }} &middot;
+      {{ group.rows[0].actor_id }} &middot;
+      {{ t('audit.rows_in_request', count=group.rows | length) }}
+      <code>{{ group.request_id }}</code></td>
+  </tr>
+  {% endif %}
+  {% for row in group.rows %}
+  <tr{% if group.request_id and group.rows | length > 1 %} class="sub"{% endif %}>
     <td>{{ row.occurred_at | moment }}
-        <br><small class="mono">#{{ row.seq }}</small></td>
+        <span class="hint mono">#{{ row.seq }}</span></td>
     <td><span class="mono">{{ row.action }}</span>
-        <br><span class="tag {{ 'acknowledged' if row.outcome == 'success' else 'failed' }}">{{ row.outcome }}</span></td>
-    <td>{{ row.actor_id }}
-        <br><small>{{ row.actor_type }}</small></td>
+        <span class="hint"><span class="tag {{ 'acknowledged' if row.outcome == 'success' else 'failed' }}">{{ row.outcome }}</span>
+        {{ row.actor_id }}</span></td>
     <td>
       {# The point of the page: from "something happened" to the thing it
          happened to, without copying an id out of a JSON blob. Only targets
-         this reader may actually open are linked. #}
+         this reader may actually open are linked, and the correlation ids sit
+         under the link rather than beside it as a third mono string. #}
       {% if links[row.event_id] %}
         {% for link in links[row.event_id] %}
         <a href="{{ link.href }}">{{ t(link.label_key) }}</a>
-        <br><small class="mono">{{ link.value }}</small>
+        <span class="hint mono">{{ link.value }}</span>
         {% endfor %}
       {% else %}
-        <small class="empty">{{ t('audit.nothing_addressable') }}</small>
+        <span class="hint">{{ t('audit.nothing_addressable') }}</span>
       {% endif %}
-      {% if row.request_id %}<br><small class="mono">req {{ row.request_id }}</small>{% endif %}
-      {% if row.idempotency_key %}<br><small class="mono">key {{ row.idempotency_key }}</small>{% endif %}
+      {% if row.idempotency_key %}<span class="hint mono">key {{ row.idempotency_key }}</span>{% endif %}
+      {% if row.request_id and not (group.request_id and group.rows | length > 1) %}
+      <span class="hint mono">req {{ row.request_id }}</span>{% endif %}
     </td>
     <td>
       {% if row.detail %}
@@ -86,6 +109,7 @@
       {% endif %}
     </td>
   </tr>
+  {% endfor %}
   {% endfor %}
 </table>
 {% else %}

@@ -123,6 +123,55 @@ def test_a_scope_claim_narrows_and_never_grants():
     assert not narrowed.may(Scope.payments_submit, "acme")
 
 
+def test_a_scope_claim_naming_none_of_our_scopes_narrows_nothing():
+    """The defect this rule answers, and the reason it was a defect.
+
+    `scope` is OIDC's own claim and a compliant provider fills it with
+    `openid profile email` whether or not anybody meant it to say anything
+    about payments. Intersecting a correct grant with that produced an empty
+    console on a valid sign-in, with nothing in the log stream to read.
+    """
+    granted = identity.build_principal(
+        subject="m", issuer="i", method="bearer", roles=["member"],
+        grants=[("acme", Level.operator)],
+        requested=["openid", "profile", "email"])
+    assert granted.may(Scope.payments_read, "acme")
+    assert granted.may(Scope.payments_submit, "acme")
+    assert granted.scopes == identity.LEVEL_SCOPES[Level.operator]
+    assert not granted.narrowed, "nothing was taken away, so nothing is reported"
+
+    # And the same rule in the global helper, which decides the role-only case.
+    assert identity.effective_scopes(["admin"], ["openid", "profile"]) == \
+        identity.ROLE_SCOPES[Role.admin]
+
+
+def test_a_claim_that_does_name_one_of_ours_still_narrows_to_exactly_it():
+    """The rule keeps the direction it always had: it only ever subtracts.
+
+    A deployment that put painfree's scope names into its provider is not
+    changed by the rule above, which is what makes the change safe to ship: it
+    repairs the deployments that never asked to narrow and leaves the ones that
+    did exactly as they were.
+    """
+    narrowed = identity.build_principal(
+        subject="m", issuer="i", method="bearer", roles=["member"],
+        grants=[("acme", Level.operator)],
+        requested=["payments:read", "openid", "profile"])
+    assert narrowed.may(Scope.payments_read, "acme")
+    assert not narrowed.may(Scope.payments_submit, "acme")
+    assert narrowed.narrowed, "privilege was taken away, and it is recorded"
+
+
+def test_narrowing_that_takes_nothing_away_is_not_reported_as_narrowing():
+    """A token asking for exactly what it holds has not been restricted."""
+    same = identity.build_principal(
+        subject="m", issuer="i", method="bearer", roles=["member"],
+        grants=[("acme", Level.viewer)],
+        requested=sorted(scope.value for scope in identity.LEVEL_SCOPES[Level.viewer]))
+    assert same.scopes == identity.LEVEL_SCOPES[Level.viewer]
+    assert not same.narrowed
+
+
 def test_an_unmapped_role_makes_a_member_and_no_administrator():
     """It grants nothing, and being a member is not a privilege on its own."""
     assert identity.scopes_for(["payments-admin", "superuser"]) == frozenset()

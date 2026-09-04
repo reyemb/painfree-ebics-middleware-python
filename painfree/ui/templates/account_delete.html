@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}{{ t('account_delete.title') }} {{ account.subject }} — painfree{% endblock %}
+{% block body %}
+{# The same shape as replaying an order, and for the same reason: a page whose
+   whole job is to name what is about to happen. Replaying re-sends a file the
+   bank deduplicates; this stops a person signing in, and it was the one with no
+   page in front of it. #}
+<h1>{{ t('account_delete.heading') }} <code>{{ account.subject }}</code>?</h1>
+
+<div class="card bad">
+<table class="plain">
+  <tr><td>{{ t('access.subject') }}</td><td><code>{{ account.subject }}</code></td></tr>
+  <tr><td>{{ t('access.name') }}</td><td>{{ account.display_name or '—' }}</td></tr>
+  <tr><td>{{ t('api.role') }}</td><td><code>{{ account.role.value }}</code></td></tr>
+  <tr><td>{{ t('accounts.status') }}</td>
+      <td>{% if account.disabled %}{{ t('accounts.suspended') }}
+          {% else %}{{ t('accounts.active') }}{% endif %}</td></tr>
+  <tr><td>{{ t('accounts.password_set') }}</td><td>{{ account.password_changed_at | moment }}</td></tr>
+</table>
+</div>
+
+{# What survives, which is the sentence this page is for. #}
+<div class="card warn">
+<p><strong>{{ t('account_delete.grants_stay') }}</strong>
+   {{ t('accounts.delete_keeps_grants') }}</p>
+{% if grants.grants or grants.oversight %}
+<table class="plain">
+  {% if grants.oversight %}
+  <tr><td>{{ t('access.oversight_heading') }}</td>
+      <td><span class="tag viewer">oversight</span> {{ t('access.every_connection_readonly') }}</td></tr>
+  {% endif %}
+  {% for connection_id, level in grants.grants %}
+  <tr><td><code>{{ connection_id }}</code></td>
+      <td><span class="tag {{ level.value }}">{{ level.value }}</span></td></tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="hint">{{ t('account_delete.no_grants') }}</p>
+{% endif %}
+</div>
+
+<div class="card">
+<p>{{ t('account_delete.suspend_instead') }}</p>
+{# The confirmation is the subject itself. A hidden field carrying a fixed word
+   is a field the form fills in, and what it guards against is nothing; typing
+   the name is the operator saying *which* account, which is the fact a misclick
+   gets wrong. #}
+<form method="post" action="/ui/accounts/{{ account.subject }}/delete">
+  <label>{{ t('account_delete.type_subject') }}
+    <input type="text" name="confirm" class="mono" required autocomplete="off"
+           spellcheck="false" placeholder="{{ account.subject }}"></label>
+  <div class="actions">
+    <button type="submit" class="danger">{{ t('account_delete.confirm') }}</button>
+    <a class="button secondary" href="/ui/accounts">{{ t('common.cancel') }}</a>
+  </div>
+</form>
+</div>
+{% endblock %}

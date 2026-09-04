@@ -12,6 +12,7 @@ the connections its reader holds.
 from __future__ import annotations
 
 import datetime as _dt
+from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 
@@ -69,18 +70,47 @@ def audit(request: Request, connection_id: str = "", actor_id: str = "",
         before_seq=before or None)
     page = rows[:max(1, min(limit, MAX_AUDIT_PAGE))]
     return render(
-        request, "audit.html", events=page,
+        request, "audit.html", events=page, groups=_by_request(page),
         links={row["event_id"]: audit_links(row, may_for(principal))
                for row in page},
         actions=log_.actions(allowed), actors=log_.actors(
             connection_ids=allowed),
         connections=access.held(principal, _registry(request).all()),
+        # For the "today" quick filter, which is a link and therefore needs the
+        # date the server thinks it is rather than the browser's.
+        today=_dt.datetime.now(_dt.timezone.utc).date().isoformat(),
         filters={"connection_id": connection_id, "actor_id": actor_id,
                  "action": action, "outcome": outcome, "order_id": order_id,
                  "since": since, "until": until},
         # A cursor, not an offset: rows arrive while the page is read, and an
         # offset would show one twice and skip another (`AuditLog.search`).
         older=page[-1]["seq"] if len(rows) > len(page) else None)
+
+
+def _by_request(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Consecutive rows sharing a `request_id`, as one operator action.
+
+    Accepting a payment writes a row; so does validating it, and the upload, the
+    status report and the webhook. They already share a `request_id` and the
+    trail already stores it -- it was printed in the corner of a cell -- but
+    read as fifty rows of equal weight, one person pressing one button looks
+    like five unrelated things happening.
+
+    **Consecutive only, and never re-ordered.** The page is a cursor over an
+    append sequence; gathering rows from further down the trail would mean
+    holding a window open to find them and would show a row on a page its
+    sequence number says it is not on. A request whose rows straddle a page
+    boundary is two groups, which is the truthful answer for a page that ends
+    there.
+    """
+    groups: list[dict[str, Any]] = []
+    for row in rows:
+        request_id = row.get("request_id")
+        if (groups and request_id and groups[-1]["request_id"] == request_id):
+            groups[-1]["rows"].append(row)
+            continue
+        groups.append({"request_id": request_id, "rows": [row]})
+    return groups
 
 
 def _day(value: str, label: str) -> _dt.datetime | None:

@@ -522,7 +522,7 @@ th.theirs { background: var(--pf-primary-container); color: var(--pf-on-primary-
 .filters.shows a:hover {
   background: color-mix(in srgb, var(--pf-primary) calc(var(--pf-state-hover) * 100%), transparent);
 }
-.filters.shows a[aria-current="page"] {
+.filters.shows a[aria-current="true"] {
   background: var(--pf-secondary-container);
   color: var(--pf-on-secondary-container);
   border-color: transparent;
@@ -606,4 +606,83 @@ td > details table.plain td:first-child { width: 170px; }
   font-variant-numeric: tabular-nums;
   padding-left: var(--pf-space-1);
 }
-.filters.shows a[aria-current="page"] .count { color: inherit; opacity: .75; }
+.filters.shows a[aria-current="true"] .count { color: inherit; opacity: .75; }
+
+/* The levers on an account that stop somebody signing in, separated from the
+   two that do not. A rule and a label rather than a colour alone: `Suspend` is
+   reversible and `Delete` is not, and they belong together and apart. */
+.destructive {
+  border-top: 1px solid var(--pf-outline-variant);
+  padding-top: var(--pf-space-3);
+  margin-top: var(--pf-space-1);
+}
+.destructive .hint { margin-bottom: var(--pf-space-2); }
+td > details > .stack { margin-top: var(--pf-space-3); }
+td > details > .stack > form { margin: 0; }
+
+/* The grant matrix: people down, connections across. A list of people each
+   carrying a list of their connections answers "what does this person hold"
+   and turns "who can move money at this bank" into a read of every row. */
+table.matrix th.conn, table.matrix td.cell { text-align: center; }
+table.matrix td.cell { vertical-align: middle; }
+table.matrix .none { color: var(--pf-outline); }
+/* Oversight names no connection, so it spans them rather than sitting in one. */
+table.matrix td.span {
+  background: var(--pf-secondary-container);
+  color: var(--pf-on-secondary-container);
+  text-align: center;
+  vertical-align: middle;
+}
+
+/* --- a schedule's coverage --------------------------------------------------
+   The failure this page exists to catch is a silent one: `EBICS_NO_DOWNLOAD_
+   DATA_AVAILABLE` is a success, so a schedule whose window never advances stays
+   `healthy` run after run while the days behind it pile up. A sentence in a
+   column said so; a band says it at a glance. Fetched is solid, outstanding is
+   the error ramp, and the span is the window the next run asks for. */
+.band { display: grid; gap: var(--pf-space-1); min-width: 190px; }
+.track {
+  display: flex;
+  height: 14px;
+  border-radius: 3px;
+  background: var(--pf-surface-highest);
+  overflow: hidden;
+}
+.track .got { background: var(--pf-success); }
+.track .gap {
+  background: repeating-linear-gradient(135deg,
+    var(--pf-error) 0 4px, transparent 4px 8px);
+}
+/* Not started is not overdue. A schedule that has never fetched anything has a
+   window ahead of it and nothing behind it, and painting that red would teach
+   an operator that red means nothing. */
+.track .gap.waiting {
+  background: repeating-linear-gradient(135deg,
+    var(--pf-outline) 0 4px, transparent 4px 8px);
+}
+.bandkey {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--pf-space-3);
+  font: var(--pf-body-small);
+  color: var(--pf-on-surface-variant);
+}
+.bandkey .late { color: var(--pf-error); font-weight: 600; }
+
+/* Health as an edge rather than a column: a failing row is then found by
+   looking rather than by reading the fifth cell of every one. */
+tr.stripe > td:first-child { border-left: 3px solid transparent; }
+tr.stripe.healthy > td:first-child { border-left-color: var(--pf-success); }
+tr.stripe.failing > td:first-child { border-left-color: var(--pf-error); }
+tr.stripe.paused > td:first-child { border-left-color: var(--pf-warning); }
+tr.stripe.untried > td:first-child { border-left-color: var(--pf-outline-variant); }
+
+/* One operator action and the rows it wrote. They already shared a
+   `request_id`; read as rows of equal weight, one person pressing one button
+   looked like several unrelated things happening at the same instant. */
+tr.reqhead td {
+  background: var(--pf-surface-container);
+  font: var(--pf-title-small);
+  color: var(--pf-on-surface);
+}
+tr.sub td:first-child { padding-left: var(--pf-space-5); }

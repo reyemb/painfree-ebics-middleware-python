@@ -68,11 +68,11 @@
    and each state is a URL an operator can keep. #}
 <p class="filters shows">
   <span class="hint">{{ t('account.show') }}</span>
-  <a href="?show=all"{% if show == 'all' %} aria-current="page"{% endif %}>{{ t('account.show_all') }}</a>
-  <a href="?show=debit"{% if show == 'debit' %} aria-current="page"{% endif %}>{{ t('account.money_out') }}</a>
-  <a href="?show=credit"{% if show == 'credit' %} aria-current="page"{% endif %}>{{ t('account.money_in') }}</a>
+  <a href="?show=all"{% if show == 'all' %} aria-current="true"{% endif %}>{{ t('account.show_all') }}</a>
+  <a href="?show=debit"{% if show == 'debit' %} aria-current="true"{% endif %}>{{ t('account.money_out') }}</a>
+  <a href="?show=credit"{% if show == 'credit' %} aria-current="true"{% endif %}>{{ t('account.money_in') }}</a>
   {% if ledger.ours %}
-  <a href="?show=ours"{% if show == 'ours' %} aria-current="page"{% endif %}>{{ t('account.show_ours') }}</a>
+  <a href="?show=ours"{% if show == 'ours' %} aria-current="true"{% endif %}>{{ t('account.show_ours') }}</a>
   {% endif %}
 </p>
 

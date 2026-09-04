@@ -68,13 +68,19 @@ def accounts_page(request: Request,
     """Who may sign in, who is currently locked out, and both levers."""
     store = _accounts(request)
     store.purge_lockouts()
+    mode = request.app.state.settings.auth_mode
+    rows = store.all()
     return render(
         request, "accounts.html",
-        accounts=store.all(),
+        accounts=rows,
+        # Under a provider every password here is a credential sign-in refuses.
+        # The page already says a new one could not sign in; these already
+        # cannot, and saying so is the difference between a warning and a fact.
+        inert=[row.subject for row in rows] if mode is AuthMode.oidc else [],
         lockouts=store.lockouts(),
         roles=[role.value for role in Role],
         minimum_password_length=MINIMUM_PASSWORD_LENGTH,
-        auth_mode=request.app.state.settings.auth_mode.value)
+        auth_mode=mode.value)
 
 
 @router.post("/accounts")
@@ -140,13 +146,43 @@ def suspend(subject: str, request: Request,
     return _see()
 
 
+@router.get("/accounts/{subject}/delete")
+def confirm_delete(subject: str, request: Request,
+                   principal: Principal = Depends(_administrator)):
+    """Name exactly what is about to go, before any of it goes.
+
+    The same shape as replaying an order: a page of its own, the facts on it,
+    and a confirmation that cannot be produced by a misclick. Replaying re-sends
+    a file the bank deduplicates; deleting an account stops a person signing in,
+    and it was the one that had no page.
+
+    **The grants are the sentence this page exists for.** Deleting the account
+    leaves every `connection_grant` and `oversight_grant` naming that subject
+    exactly where it is, so an account remade under the same name comes back
+    holding what it held. That is either what somebody wants or the opposite of
+    it, and both need to know it before pressing the button.
+    """
+    account = _accounts(request).get(subject)
+    if account is None:
+        raise NotFoundError(f"no account named {subject!r}")
+    return render(request, "account_delete.html", account=account,
+                  grants=request.app.state.grants.reach_for(subject))
+
+
 @router.post("/accounts/{subject}/delete")
 def delete_account(subject: str, request: Request,
                    form: dict = Depends(form_data),
                    principal: Principal = Depends(_administrator)):
-    """Remove the account. **Not the grants** -- the page says so beside it."""
-    if (form.get("confirm") or "") != "delete":
-        raise ConflictError("that form did not confirm the deletion")
+    """Remove the account. **Not the grants** -- the page said so beside it.
+
+    The confirmation is the subject itself rather than a fixed word: a hidden
+    field carrying `delete` is a field a form fills in, and what it guarded
+    against was nothing. Typing the name is the operator saying which account,
+    which is the fact a misclick gets wrong.
+    """
+    if (form.get("confirm") or "").strip() != subject:
+        raise ConflictError(
+            "to delete this account, type its subject to confirm")
     if not _accounts(request).delete(subject, actor=principal.actor()):
         raise NotFoundError(f"no account named {subject!r}")
     return _see()

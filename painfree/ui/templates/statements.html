@@ -11,9 +11,9 @@
 {% set filters = ('&connection_id=' ~ selected_connection if selected_connection else '')
                  ~ ('&message_type=' ~ selected_type if selected_type else '') %}
 <p class="filters shows">
-  <a href="?family=account{{ filters }}"{% if family == 'account' %} aria-current="page"{% endif %}>{{ t('statements.tab_accounts') }}
+  <a href="?family=account{{ filters }}"{% if family == 'account' %} aria-current="true"{% endif %}>{{ t('statements.tab_accounts') }}
     <span class="count">{{ counts.get('account') | count }}</span></a>
-  <a href="?family=response{{ filters }}"{% if family == 'response' %} aria-current="page"{% endif %}>{{ t('statements.tab_responses') }}
+  <a href="?family=response{{ filters }}"{% if family == 'response' %} aria-current="true"{% endif %}>{{ t('statements.tab_responses') }}
     <span class="count">{{ counts.get('response') | count }}</span></a>
 </p>
 

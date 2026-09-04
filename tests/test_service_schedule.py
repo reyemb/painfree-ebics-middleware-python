@@ -64,6 +64,37 @@ def register(store, **overrides):
 # --- registration -----------------------------------------------------------
 
 
+def test_the_share_behind_is_what_a_coverage_band_is_drawn_to():
+    """The one number a picture of coverage needs, and its two edges.
+
+    Today is always in the pending window and is never a gap, so a schedule that
+    is up to date has a window of one day with nothing overdue in it. An undated
+    schedule has no span to be behind on and must be zero rather than a guess.
+    """
+    from painfree.schedule import Window
+
+    current = Window(dated=True, covered_through="2026-09-03",
+                     pending_start="2026-09-04", pending_end="2026-09-04")
+    assert current.days_behind == 0 and current.share_behind == 0
+
+    late = Window(dated=True, covered_through="2026-08-20",
+                  pending_start="2026-08-21", pending_end="2026-09-02")
+    assert late.days_behind == 12 and late.share_behind == 92
+
+    undated = Window(dated=False, covered_through=None,
+                     pending_start=None, pending_end=None)
+    assert undated.share_behind == 0, "no span is not a full one"
+
+    # And the case the picture got wrong first: a schedule that has never
+    # fetched anything is not behind, however wide the window it is about to
+    # ask for, so the share has to agree with `behind` rather than with the
+    # arithmetic alone.
+    fresh = Window(dated=True, covered_through=None,
+                   pending_start="2026-08-22", pending_end="2026-09-04")
+    assert fresh.days_behind == 13 and not fresh.behind
+    assert fresh.share_behind == 0
+
+
 def test_a_schedule_carries_the_btf_the_bank_publishes(schedules):
     _, store = schedules
     schedule = register(store)

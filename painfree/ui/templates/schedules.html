@@ -56,43 +56,65 @@
 
 <div class="card">
 {% if schedules %}
+{# Four columns and a picture. Health is the stripe down the left edge rather
+   than a column of its own, and the BTF triplet -- read when a bank changes it
+   and not before -- folds into the schedule's own cell. #}
 <table>
-  <tr><th>{{ t('schedules.schedule') }}</th><th>{{ t('schedules.fetches') }}</th>
-      <th>{{ t('common.connection') }}</th><th>{{ t('schedules.cadence') }}</th>
-      <th>{{ t('webhooks.health') }}</th><th>{{ t('schedules.last_run') }}</th>
-      <th>{{ t('schedules.covered_through_column') }}</th><th>{{ t('schedules.next_due') }}</th></tr>
+  <tr><th>{{ t('schedules.schedule') }}</th><th style="width:34%">{{ t('schedules.coverage') }}</th>
+      <th>{{ t('schedules.last_run') }}</th><th>{{ t('schedules.next_due') }}</th></tr>
   {% for row in schedules %}
-  <tr>
+  {% set window = windows[row.schedule_id] %}
+  <tr class="stripe {{ row.health }}">
     <td><a href="/ui/schedules/{{ row.schedule_id }}">{{ row.description or row.label }}</a>
-        <br><small class="mono">{{ row.schedule_id }}</small></td>
-    {# The BTF is the bank's own order parameters. Every value in this cell is
-       a protocol identifier and none of them is translated. #}
-    <td><span class="mono">{{ row.label }}</span>
-        <br><small>{{ t('schedules.service') }} <code>{{ row.service_name }}</code>{% if row.scope %}, {{ t('schedules.scope') }} <code>{{ row.scope }}</code>{% endif %}{% if row.container %}, <code>{{ row.container }}</code>{% endif %}</small></td>
-    <td><a href="/ui/connections/{{ row.connection_id }}"><code>{{ row.connection_id }}</code></a></td>
-    <td>{{ row.cadence.total_seconds() | int | cadence }}</td>
-    <td><span class="tag {{ row.health }}">{{ row.health }}</span>
-        {% if row.running %}<br><small>{{ t('schedules.running_now') }}</small>{% endif %}</td>
+        <span class="hint"><span class="mono">{{ row.label }}</span> {{ t('schedules.on') }}
+          <a href="/ui/connections/{{ row.connection_id }}"><code>{{ row.connection_id }}</code></a>
+          &middot; {{ row.cadence.total_seconds() | int | cadence }}</span>
+        <span class="hint"><span class="tag {{ row.health }}">{{ row.health }}</span>
+          {% if row.running %}{{ t('schedules.running_now') }}{% endif %}</span>
+        {# Every value in here is a protocol identifier and none is translated. #}
+        <details>
+          <summary><small>{{ t('schedules.fetches') }}</small></summary>
+          <span class="hint">{{ t('schedules.service') }} <code>{{ row.service_name }}</code>{% if row.scope %},
+            {{ t('schedules.scope') }} <code>{{ row.scope }}</code>{% endif %}{% if row.container %},
+            <code>{{ row.container }}</code>{% endif %}</span>
+          <span class="hint mono">{{ row.schedule_id }}</span>
+        </details></td>
+    <td>
+      {% if window.dated %}
+      {# Fetched solid, outstanding hatched. The span is the window the next run
+         asks for, so an up-to-date schedule is one day of it and a schedule a
+         fortnight behind is thirteen. #}
+      {# Three states, and the middle one is why the arithmetic and the words
+         have to agree: a schedule that has never fetched anything is not
+         *behind*, however wide the window it is about to ask for. Red is
+         overdue, neutral is not started, solid is covered. #}
+      <div class="band">
+        <div class="track">
+          <span class="got" style="flex:0 0 {{ 0 if not row.fetched_through else 100 - window.share_behind }}%"></span>
+          <span class="gap{{ ' waiting' if not row.fetched_through }}" style="flex:1"></span>
+        </div>
+        <span class="bandkey">
+          {% if row.fetched_through %}{{ t('schedules.covered_through') }} {{ row.fetched_through | day }}
+          {% else %}{{ t('schedules.nothing_yet') }}{% endif %}
+          {% if window.behind %}<span class="late">{{ t('schedules.days_outstanding', count=window.days_behind) }}</span>
+          {% elif row.fetched_through %}<span>{{ t('schedules.up_to_date') }}</span>
+          {% else %}<span>{{ t('schedules.days_outstanding', count=window.days_pending) }}</span>{% endif %}
+        </span>
+      </div>
+      {% else %}
+      <span class="hint">{{ t('schedules.no_date_range') }}</span>
+      {% endif %}
+    </td>
     <td>
       {% if last_runs[row.schedule_id] %}
         {% set run = last_runs[row.schedule_id] %}
         <span class="tag run-{{ run.state }}">{{ run.state }}</span>
-        {% if run.state == 'empty' %}<br><small>{{ t('schedules.bank_had_nothing') }}</small>
-        {% elif run.state == 'complete' %}<br><small>{{ t('schedules.statement_count', count=run.statements) }}</small>
-        {% elif run.return_code %}<br><small class="mono">{{ run.return_code }}</small>{% endif %}
-        <br><small>{{ row.last_run_at | moment }}</small>
+        {% if run.state == 'empty' %}<span class="hint">{{ t('schedules.bank_had_nothing') }}</span>
+        {% elif run.state == 'complete' %}<span class="hint">{{ t('schedules.statement_count', count=run.statements) }}</span>
+        {% elif run.return_code %}<span class="hint mono">{{ run.return_code }}</span>{% endif %}
+        <span class="hint">{{ row.last_run_at | moment }}</span>
       {% else %}
-        <small>{{ t('schedules.never_run') }}</small>
-      {% endif %}
-    </td>
-    <td>
-      {% if windows[row.schedule_id].dated %}
-        {{ row.fetched_through | day if row.fetched_through else '—' }}
-        {% if windows[row.schedule_id].behind %}
-        <br><small class="mono">{{ t('schedules.days_outstanding', count=windows[row.schedule_id].days_behind) }}</small>
-        {% endif %}
-      {% else %}
-        <small>{{ t('schedules.no_date_range') }}</small>
+        <span class="hint">{{ t('schedules.never_run') }}</span>
       {% endif %}
     </td>
     <td>{{ row.due_at | moment }}</td>

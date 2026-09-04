@@ -372,6 +372,12 @@ class Principal:
     #: for a member nobody has granted anything -- which is a working login
     #: with an empty console rather than a fault.
     grants: tuple[tuple[str, Level], ...] = ()
+    #: The token's `scope` claim took privilege away that the grants gave.
+    #: Recorded because the alternative is a silent one: a correct grant, a
+    #: valid sign-in, and a console with nothing in it, with nothing anywhere
+    #: saying which of the two decided. The console shows it beside the grant
+    #: and :mod:`painfree.authn` logs it.
+    narrowed: bool = False
     #: This caller holds a deployment-wide **oversight** grant: every read
     #: scope, on every connection and on the rows that name none, and nothing
     #: else. Not a role -- the role is still `member` -- and not a level,
@@ -532,12 +538,22 @@ def build_principal(*, subject: str, issuer: str, method: str,
             *(LEVEL_SCOPES[level] for _, level in held)) if held else frozenset()
         if oversight:
             granted |= OVERSIGHT_SCOPES
+    narrowed = False
     if requested is not None:
-        granted &= {Scope(name) for name in requested if name in _SCOPE_VALUES}
+        asked = {Scope(name) for name in requested if name in _SCOPE_VALUES}
+        if asked:
+            narrowed = bool(granted - asked)
+            granted &= asked
+        # A claim that named none of this service's scopes is a claim about
+        # something else. `scope` is OIDC's own, and a provider fills it with
+        # `openid profile email` whether or not anybody meant it to say
+        # anything about payments -- intersecting with that is how a correct
+        # grant becomes an empty console, silently, on a token that is doing
+        # exactly what the standard says it should.
     return Principal(subject=subject, issuer=issuer, method=method,
                      scopes=frozenset(granted), roles=names,
                      admin=role is Role.admin, grants=tuple(held),
-                     oversight=oversight,
+                     oversight=oversight, narrowed=narrowed,
                      unrecognised_roles=unrecognised_roles,
                      token_id=token_id, expires_at=expires_at,
                      display_name=display_name)
@@ -610,7 +626,9 @@ def effective_scopes(roles: Iterable[str],
     if requested is None:
         return granted
     asked = {Scope(name) for name in requested if name in _SCOPE_VALUES}
-    return frozenset(granted & asked)
+    # Same rule as :func:`build_principal`: a claim naming none of ours narrows
+    # nothing, because it was not talking about us.
+    return frozenset(granted & asked) if asked else granted
 
 
 _SCOPE_VALUES = {scope.value for scope in Scope}

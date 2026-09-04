@@ -42,6 +42,7 @@ from fastapi.responses import RedirectResponse
 
 from painfree.access import Grants
 from painfree.access_api import _administrator
+from painfree.config import AuthMode
 from painfree.errors import ConflictError, NotFoundError
 from painfree.identity import OVERSIGHT_SCOPES, Level, Principal
 from painfree.logging import bind
@@ -95,9 +96,28 @@ def access_index(request: Request,
     """
     store = _grants(request)
     subjects = store.subjects()
+    # How each person signs in. A grant is inert without a way to use it, and
+    # the two facts live in tables nothing joined: `basic_account` holds the
+    # local passwords and the grant tables hold the privilege, so a grant
+    # nobody can use looked exactly like a working one.
+    mode = request.app.state.settings.auth_mode
+    local = {row.subject for row in request.app.state.accounts.all()}
     return render(request, "access.html", subjects=subjects,
                   connections=_registry(request).all(),
                   levels=[level.value for level in Level],
+                  password_holders=local, auth_mode=mode.value,
+                  # The number an administrator opens this page to check.
+                  # `operator` is the level that carries `payments:submit`.
+                  movers=sum(1 for row in subjects
+                             if any(grant.level is Level.operator
+                                    for grant in row.grants)),
+                  # A person who can never sign in is the state this page could
+                  # not show at all, and under `basic` it is the ordinary
+                  # consequence of granting before the account exists.
+                  stranded=[row.subject for row in subjects
+                            if mode is AuthMode.basic
+                            and row.subject not in local
+                            and (row.grants or row.oversight)],
                   oversight=[row for row in subjects if row.oversight],
                   # Holding oversight is holding something, so a reviewer is
                   # not "signed in, holding no grant" -- listing them there
