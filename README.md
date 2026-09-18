@@ -25,6 +25,14 @@ EBICS initialisation, key management, order history, replay, audit.
 **Early, and running.** One production deployment, against one bank: a payment
 this service built has been accepted from a real account.
 
+**Tested with the St. Galler Kantonalbank.** Payments, status reports and
+account statements have been exchanged with it over EBICS 3.0 from a real
+account. No other bank has been tried yet. Every bank reads the standard a
+little differently, so if you run this against another one and it needs
+support, [open an issue](https://github.com/reyemb/painfree-ebics-middleware-python/issues)
+at any time, with the bank's name and the return code or the document it
+refused.
+
 Still not suitable for anyone else's money. This is our own infrastructure
 talking to our own accounts, and the week it first ran against a bank found five
 defects no local test could have caught — a missing `SignatureFlag`, an empty
