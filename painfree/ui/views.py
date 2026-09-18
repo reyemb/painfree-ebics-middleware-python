@@ -54,7 +54,6 @@ from painfree.logging import bind
 from painfree.orders import REPLAYABLE, OrderState, OrderStore
 from painfree.painread import summarise
 from painfree.schemes import DEFAULT_INSTANT, PaymentScheme
-from painfree.statements import ACCOUNTS, FAMILIES, RESPONSES
 from painfree.schedule import DownloadSchedules
 from painfree.ui import ledger
 from painfree.ui.rendering import render
@@ -695,40 +694,6 @@ def replay_order(
 
 
 # --- statements -------------------------------------------------------------
-
-@router.get("/statements")
-def statements(request: Request, connection_id: str = "", message_type: str = "",
-               family: str = ACCOUNTS,
-               principal: Principal = Depends(requires(Scope.statements_read))):
-    """The index, in two halves, because it holds two kinds of document.
-
-    An account statement is read for its closing balance and an entry count; a
-    status report is read for what the bank said about a payment. One table
-    with the union of both columns is a table half of whose cells are empty on
-    every row, which is what this used to be.
-    """
-    store = request.app.state.statements
-    allowed, possible = access.restrict(principal, connection_id or None)
-    family = family if family in FAMILIES else ACCOUNTS
-    rows = []
-    if possible and family == RESPONSES:
-        rows = store.responses(connection_ids=allowed,
-                               message_type=message_type or None, limit=100)
-    elif possible:
-        rows = store.recent(connection_ids=allowed, family=ACCOUNTS,
-                            message_type=message_type or None, limit=100)
-    return render(request, "statements.html",
-                  statements=rows, family=family,
-                  counts=store.counts_by_family(
-                      connection_ids=allowed,
-                      message_type=message_type or None) if possible
-                  else dict.fromkeys(FAMILIES, 0),
-                  connections=access.held(principal, _registry(request).all()),
-                  message_types=store.message_types(),
-                  status_codes=reconcile.STATUS_CODES,
-                  selected_connection=connection_id,
-                  selected_type=message_type)
-
 
 @router.get("/statements/{statement_id}")
 def statement(request: Request, statement_id: str, show: str = "all",

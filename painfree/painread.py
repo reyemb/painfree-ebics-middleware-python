@@ -154,7 +154,11 @@ def _transfer(node) -> Transfer:
         currency=amount.get("Ccy") if amount is not None else None,
         end_to_end_id=_text(node, "p:PmtId/p:EndToEndId"),
         instruction_id=_text(node, "p:PmtId/p:InstrId"),
-        remittance=_text(node, "p:RmtInf/p:Ustrd"),
+        # The message to the beneficiary sits in `Ustrd` on its own and in
+        # `AddtlRmtInf` beside a structured reference; the builder writes it
+        # to whichever the reference allows, and a reader wants the words.
+        remittance=(_text(node, "p:RmtInf/p:Ustrd")
+                    or _text(node, "p:RmtInf/p:Strd/p:AddtlRmtInf")),
         # `QRR` is proprietary and `SCOR` is an ISO code, so the type is in one
         # of two elements. Which one it was is not a distinction a reader needs.
         reference_type=(_text(reference, "p:Tp/p:CdOrPrtry/p:Prtry")

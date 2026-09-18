@@ -37,8 +37,7 @@ distinction is made on the ``Accept`` header and the path.
 """
 
 from painfree.ui import (access_views, account_views, catalogue_views,
-                         payment_views,
-                         reference_views)
+                         payment_views, reference_views, statement_views)
 from painfree.ui.rendering import render, wants_html
 from painfree.ui.views import router
 
@@ -48,9 +47,10 @@ from painfree.ui.views import router
 #: itself (`reference_views`), who may reach it (`access_views`), who may
 #: sign in at all when there is no identity provider to ask (`account_views`),
 #: the one payment a person raises by hand (`payment_views`), and what the
-#: bank says it accepts (`catalogue_views`).
+#: bank says it accepts (`catalogue_views`), and the accounts the statements
+#: that came back are about (`statement_views`).
 ROUTERS = (router, reference_views.router, access_views.router,
            account_views.router, payment_views.router,
-           catalogue_views.router)
+           catalogue_views.router, statement_views.router)
 
 __all__ = ["ROUTERS", "render", "router", "wants_html"]

@@ -29,8 +29,9 @@ from painfree.orders import OrderState, OrderStore
 from painfree.schema import (audit_log, bank_connection, key_material,
                              payment_order)
 from painfree.statements import StatementStore
-from tests.conftest import (BANK_CONNECTION_ID, dev_credentials, fixture_bytes,
-                            grant, payment_body, transfer)
+from tests.conftest import (BANK_CONNECTION_ID, PLAIN_IBAN, QRR_REFERENCE,
+                            dev_credentials, fixture_bytes, grant, payment_body,
+                            transfer)
 
 BROWSER = {"accept": "text/html,application/xhtml+xml"}
 
@@ -398,9 +399,10 @@ def test_a_statement_page_shows_the_normalised_json_and_the_list_does_not(consol
         BANK_CONNECTION_ID, [fixture_bytes("camt.053.001.08")])
     statement_id = result.statement_ids[0]
 
-    listing = client.get("/ui/statements", headers=_admin())
+    listing = client.get("/ui/statements?family=documents", headers=_admin())
     assert statement_id in listing.text
     assert "entries" not in listing.text.split("<table")[1][:200]
+    assert "Robert Schneider AG" not in listing.text, "an index lists no entries"
 
     page = client.get(f"/ui/statements/{statement_id}", headers=_admin())
     assert page.status_code == 200
@@ -507,11 +509,11 @@ def test_the_index_is_split_because_it_holds_two_kinds_of_document(console):
          valid_payment_status(payment_status(order["msg_id"],
                                              group_status="ACSP"))])
 
-    accounts = client.get("/ui/statements", headers=_admin())
+    accounts = client.get("/ui/statements?family=documents", headers=_admin())
     assert accounts.status_code == 200
-    # Each tab says how much is behind it, so the half an operator is not
-    # looking at is not silently empty.
-    tabs = accounts.text.split('<div class="card">')[0]
+    # Each document tab says how much is behind it, so the half an operator
+    # is not looking at is not silently empty.
+    tabs = accounts.text.split('<form')[0]
     assert "Account statements" in tabs and "Bank responses" in tabs
     assert tabs.count('<span class="count">1</span>') == 2, tabs
     assert "CH5604835012345678009" in accounts.text
@@ -837,3 +839,107 @@ def test_the_avatar_takes_one_letter_per_name(console):
     for empty in ("", "   ", None):
         assert _initials(empty) == "?"
 
+
+
+# --- the account overview ---------------------------------------------------
+
+@pytest.fixture
+def september(monkeypatch):
+    """The overview reads a period back from now; the fixtures are in August."""
+    import datetime as _dt
+    from painfree.ui import statement_views
+    monkeypatch.setattr(statement_views, "_now", lambda: _dt.datetime(
+        2026, 9, 1, tzinfo=_dt.timezone.utc))
+
+
+def test_the_statements_page_opens_on_an_account_and_remembers_it(console,
+                                                                  september):
+    """The page is an account, not a list of documents.
+
+    The balance the newest statement stated, the money in and out over the
+    period, and the entries behind them, for one account the reader chose. The
+    choice is remembered in a cookie, the way the language is, so the page
+    opens where it was left.
+    """
+    client, engine, _ = console
+    StatementStore(engine).ingest(BANK_CONNECTION_ID,
+                                  [fixture_bytes("camt.053.001.08")])
+
+    page = client.get("/ui/statements", headers=_admin())
+    assert page.status_code == 200
+    assert "MUSTER AG" in page.text and "CH5604835012345678009" in page.text
+    assert "-2,949.45" in page.text, "the closing balance is the balance"
+    assert "Money in" in page.text and "3,949.75" in page.text
+    assert "Robert Schneider AG" in page.text, "one account's entries are shown"
+    assert "statement covers" in page.text
+    assert "The first account, until you pick one." in page.text
+    assert "pf_account" not in page.headers.get("set-cookie", ""), \
+        "nothing was chosen, so nothing is remembered"
+
+    chosen = client.get("/ui/statements?connection_id=" + BANK_CONNECTION_ID
+                        + "&iban=CH5604835012345678009", headers=_admin())
+    assert "pf_account=" in chosen.headers.get("set-cookie", "")
+    assert "The first account" not in chosen.text
+
+    again = client.get("/ui/statements", headers=_admin())
+    assert "Opened on the account you picked last." in again.text
+    assert "CH5604835012345678009" in again.text
+
+
+def test_the_overview_says_when_a_statement_is_missing_and_what_came_since(
+        console, september):
+    """Two statements whose balances do not meet, and an intraday report after.
+
+    A gap is a statement this service has not got; the page says so in front of
+    the figures rather than adding up around it. An intraday report repeats
+    what the next statement will carry, so its entries are shown apart and move
+    no balance.
+    """
+    client, engine, _ = console
+    first = fixture_bytes("camt.053.001.08")
+    # An earlier statement, ingested later, that closes with -2949.45 while the
+    # fixture's opens with 1000.00: the day between them never arrived.
+    second = (first.replace(b"STMT-2026-0242", b"STMT-2026-0241")
+              .replace(b"2026-08-28", b"2026-08-26")
+              .replace(b"<Amt Ccy=\"CHF\">1000.00</Amt>",
+                       b"<Amt Ccy=\"CHF\">5000.00</Amt>", 1))
+    StatementStore(engine).ingest(
+        BANK_CONNECTION_ID, [first, second, fixture_bytes("camt.052.001.08")])
+
+    page = client.get("/ui/statements", headers=_admin())
+    assert page.status_code == 200
+    assert "A statement in between is missing." in page.text
+    assert "Since the last statement" in page.text
+    # The report's own figure, apart from the ledger and with no balance.
+    assert "9,007,199,254,740,993.01" in page.text
+    # Both statements are groups of the ledger, newest period first whatever
+    # the order they arrived in, each linked.
+    assert page.text.index("STMT-2026-0242") < page.text.index("STMT-2026-0241")
+
+
+def test_an_order_page_names_the_reference_and_the_message_it_carries(console):
+    """What the beneficiary sees, and what a `pain.002` answers by."""
+    client, engine, _ = console
+    order = _submit(client, "console-reference").json()
+    page = client.get(f"/ui/orders/{order['order_id']}", headers=_admin())
+    assert "QRR" in page.text and QRR_REFERENCE in page.text
+
+    with_message = client.post(
+        f"/v1/connections/{BANK_CONNECTION_ID}/payments",
+        headers={**_admin(), "Idempotency-Key": "console-message"},
+        json=payment_body(transactions=[transfer(
+            creditor_iban=PLAIN_IBAN, reference={"type": "NONE"},
+            remittance_information="Rechnung 4711 vom 12.09.2026")])).json()
+    page = client.get(f"/ui/orders/{with_message['order_id']}",
+                      headers=_admin())
+    assert "Rechnung 4711 vom 12.09.2026" in page.text
+
+    # Beside a structured reference the message travels as `AddtlRmtInf`,
+    # and is still the message.
+    with_both = client.post(
+        f"/v1/connections/{BANK_CONNECTION_ID}/payments",
+        headers={**_admin(), "Idempotency-Key": "console-both"},
+        json=payment_body(transactions=[transfer(
+            additional_remittance_information="Teil 1 von 2")])).json()
+    page = client.get(f"/ui/orders/{with_both['order_id']}", headers=_admin())
+    assert "Teil 1 von 2" in page.text and QRR_REFERENCE in page.text

@@ -31,7 +31,34 @@
     <tr><td>{{ t('order.debtor') }}</td>
         <td>{{ payment.debtor.name or '—' }}
         {% if payment.debtor.iban %}<br><code>{{ payment.debtor.iban }}</code>{% endif %}</td></tr>
+    {# Under which reference, and with what message. The two are what the
+       beneficiary sees on their side and what a `pain.002` answers by, so an
+       operator asked "did you send the invoice number" answers from here. A
+       batch has one pair per transfer and gets the table below instead. #}
+    {% if not payment.batch and payment.transfers %}
+    {% set transfer = payment.transfers[0] %}
+    <tr><td>{{ t('payment_new.reference') }}</td>
+        <td>{% if transfer.reference %}<code>{{ transfer.reference_type }}</code> <code>{{ transfer.reference }}</code>{% else %}—{% endif %}</td></tr>
+    <tr><td>{{ t('payment_new.remittance') }}</td>
+        <td>{{ transfer.remittance or '—' }}</td></tr>
+    {% endif %}
   </table>
+  {% if payment.batch %}
+  <h2>{{ t('order.transfers') }}</h2>
+  <table>
+    <tr><th>{{ t('order.creditor') }}</th><th class="num">{{ t('order.amount') }}</th>
+        <th>{{ t('payment_new.reference') }}</th><th>{{ t('payment_new.remittance') }}</th></tr>
+    {% for transfer in payment.transfers %}
+    <tr>
+      <td>{{ transfer.creditor.name or '—' }}
+          {% if transfer.creditor.iban %}<br><code>{{ transfer.creditor.iban }}</code>{% endif %}</td>
+      <td class="num">{{ transfer.amount | amount(transfer.currency) }}</td>
+      <td>{% if transfer.reference %}<code>{{ transfer.reference_type }}</code> <code>{{ transfer.reference }}</code>{% else %}—{% endif %}</td>
+      <td>{{ transfer.remittance or '—' }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
 </div>
 {% endif %}
 

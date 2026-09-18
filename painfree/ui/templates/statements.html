@@ -1,22 +1,191 @@
 {% extends "base.html" %}
 {% import "_bank.html" as bank with context %}
+{% import "_ledger.html" as ledger_row with context %}
 {% block title %}{{ t('statements.title') }} — painfree{% endblock %}
 {% block body %}
 <h1>{{ t('statements.heading') }}</h1>
-<p class="lede">{{ t('statements.lede') }}</p>
+<p class="lede">{% if family == 'account' %}{{ t('statements.lede') }}{% else %}{{ t('statements.lede_documents') }}{% endif %}</p>
 
-{# Two halves rather than two pages: they arrive from the same schedules and an
-   operator looking for "did anything come back" wants one place to look. The
-   columns are different because the questions are. #}
+{# Three tabs. The account is what a reader has in mind; the documents are
+   what arrived, and are still one click away for the day somebody needs a
+   particular one. #}
 {% set filters = ('&connection_id=' ~ selected_connection if selected_connection else '')
                  ~ ('&message_type=' ~ selected_type if selected_type else '') %}
 <p class="filters shows">
-  <a href="?family=account{{ filters }}"{% if family == 'account' %} aria-current="true"{% endif %}>{{ t('statements.tab_accounts') }}
+  <a href="?family=account"{% if family == 'account' %} aria-current="true"{% endif %}>{{ t('statements.tab_account') }}</a>
+  <a href="?family=documents{{ filters }}"{% if family == 'documents' %} aria-current="true"{% endif %}>{{ t('statements.tab_accounts') }}
     <span class="count">{{ counts.get('account') | count }}</span></a>
   <a href="?family=response{{ filters }}"{% if family == 'response' %} aria-current="true"{% endif %}>{{ t('statements.tab_responses') }}
     <span class="count">{{ counts.get('response') | count }}</span></a>
 </p>
 
+{% if family == 'account' %}
+{# ---- the account overview ------------------------------------------------ #}
+{# Two selects and a button, no script: choosing a bank submits and lands on
+   that bank's account, then the second select offers the bank's accounts. The
+   bank select is there before any statement is, so the page always says
+   which connections the reader holds. #}
+<form class="filters" method="get" action="/ui/statements">
+  <div><label for="connection_id">{{ t('statements.bank') }}</label>
+    <select id="connection_id" name="connection_id">
+      {% for row in connections %}
+      <option value="{{ row.connection_id }}" {{ 'selected' if row.connection_id == (chosen.connection_id if chosen else selected_connection) else '' }}>{{ row.connection_id }}</option>
+      {% endfor %}
+    </select></div>
+  {% if bank_accounts %}
+  <div><label for="iban">{{ t('statements.account') }}</label>
+    <select id="iban" name="iban">
+      {% for account in bank_accounts %}
+      <option value="{{ account.iban }}" {{ 'selected' if chosen and account.iban == chosen.iban else '' }}>{{ account.iban }} · {{ account.currency }}</option>
+      {% endfor %}
+    </select></div>
+  {% endif %}
+  <input type="hidden" name="period" value="{{ period }}">
+  <button type="submit" class="secondary">{{ t('statements.open_account') }}</button>
+  <span class="hint">
+    {%- if source == 'remembered' %}{{ t('statements.remembered') }}
+    {%- elif source == 'first' and chosen %}{{ t('statements.not_remembered') }}{% endif %}</span>
+</form>
+
+{% if not accounts %}
+<div class="card"><p class="empty">{{ t('statements.no_accounts') }}</p></div>
+{% elif not chosen %}
+<div class="card"><p class="empty">{{ t('statements.no_accounts_here') }}</p></div>
+{% else %}
+{% set newest = overview.newest %}
+{% set account = (newest.payload.get('account') if newest else none) or {} %}
+{% set currency = chosen.currency %}
+<div class="card">
+<div class="acct">
+  <h2>{{ account.get('owner') or chosen.iban }}</h2>
+  <span class="meta"><code>{{ chosen.iban }}</code> · {{ currency }}
+    {%- if account.get('servicer_bic') %} · <code>{{ account.get('servicer_bic') }}</code>{% endif %}
+    · <code>{{ chosen.connection_id }}</code></span>
+</div>
+
+{# The four figures, the way the statement page draws its own: what the
+   balance is now, and what moved over the period. #}
+<div class="balband">
+  <div>
+    <div class="k">{{ t('account.balance') }}</div>
+    <div class="v {{ 'negative' if chosen.closing_balance is not none and chosen.closing_balance < 0 }}">
+      {% if chosen.closing_balance is not none %}{{ chosen.closing_balance | amount(currency) }}{% else %}—{% endif %}</div>
+    <small>{% if chosen.closing_at %}{{ t('statements.closing_on', date=chosen.closing_at | day) }}{% else %}{{ t('statements.no_closing') }}{% endif %}</small>
+  </div>
+  <div>
+    <div class="k">{{ t('account.money_in') }}</div>
+    <div class="v credit">{{ overview.credited | amount(currency) }}</div>
+    <small>{{ t('statements.entries_since', count=overview.credits, date=since | day) }}</small>
+  </div>
+  <div>
+    <div class="k">{{ t('account.money_out') }}</div>
+    <div class="v">{{ overview.debited | amount(currency) }}</div>
+    <small>{{ t('statements.entries_since', count=overview.debits, date=since | day) }}</small>
+  </div>
+  <div>
+    <div class="k">{{ t('statements.since_last') }}</div>
+    <div class="v pending">{{ overview.intraday | length | count }}</div>
+    <small>{{ t('statements.since_last_note') }}</small>
+  </div>
+</div>
+
+{# Whether the statements meet. A gap is a statement this service has not
+   got, and is said in front of the figures rather than found behind them. #}
+<p class="checkline">
+  {%- if not overview.days %}{{ t('statements.no_statements_in_period') }}
+  {%- elif overview.continuous %}<span class="yes">&check;</span>
+    {{ t('statements.coverage', count=overview.days | length, from_day=overview.oldest.to_datetime | day, to_day=overview.newest.to_datetime | day) }}
+  {%- else %}<span class="no">&times;</span>
+    {% for older, newer in overview.gaps %}
+    {{ t('statements.gap', before=older.to_datetime | day, after=newer.to_datetime | day) }}
+    {% endfor %}{% endif %}
+</p>
+
+{% set chart = overview.chart() %}
+{% if chart %}
+<div class="chart">
+  <h3>{{ t('statements.chart') }}</h3>
+  <svg viewBox="0 0 {{ chart.width }} {{ chart.height }}" role="img" aria-label="{{ t('statements.chart') }}">
+    {% for tick in chart.ticks %}
+    <line class="grid" x1="{{ chart.left }}" x2="{{ chart.right }}" y1="{{ tick.y }}" y2="{{ tick.y }}"/>
+    <text class="tick" x="{{ chart.left - 8 }}" y="{{ tick.y + 4 }}" text-anchor="end">{{ tick.value | count }}</text>
+    {% endfor %}
+    <path class="area" d="{{ chart.area }}"/>
+    <path class="line" d="{{ chart.path }}"/>
+    <circle class="end" cx="{{ chart.end.x }}" cy="{{ chart.end.y }}" r="4"/>
+    <text class="tick" x="{{ chart.left }}" y="{{ chart.bottom }}">{{ chart.first | day }}</text>
+    <text class="tick" x="{{ chart.right }}" y="{{ chart.bottom }}" text-anchor="end">{{ chart.last | day }}</text>
+  </svg>
+</div>
+{% endif %}
+</div>
+
+{# Links rather than a form, so each state is a URL an operator can keep. #}
+{% set keep = 'connection_id=' ~ chosen.connection_id ~ '&iban=' ~ chosen.iban %}
+<div class="toolbar">
+<p class="filters shows">
+  <span class="hint">{{ t('statements.period') }}</span>
+  {% for days in periods %}
+  <a href="?{{ keep }}&period={{ days }}&show={{ show }}"{% if days == period %} aria-current="true"{% endif %}>{{ t('statements.days', count=days) }}</a>
+  {% endfor %}
+</p>
+<p class="filters shows">
+  <span class="hint">{{ t('account.show') }}</span>
+  <a href="?{{ keep }}&period={{ period }}&show=all"{% if show == 'all' %} aria-current="true"{% endif %}>{{ t('account.show_all') }}</a>
+  <a href="?{{ keep }}&period={{ period }}&show=debit"{% if show == 'debit' %} aria-current="true"{% endif %}>{{ t('account.money_out') }}</a>
+  <a href="?{{ keep }}&period={{ period }}&show=credit"{% if show == 'credit' %} aria-current="true"{% endif %}>{{ t('account.money_in') }}</a>
+  {% if overview.ours %}
+  <a href="?{{ keep }}&period={{ period }}&show=ours"{% if show == 'ours' %} aria-current="true"{% endif %}>{{ t('account.show_ours') }}</a>
+  {% endif %}
+</p>
+</div>
+
+<div class="card">
+<table>
+  <tr>
+    <th>{{ t('account.booked') }}</th>
+    <th>{{ t('account.value_date') }}</th>
+    <th>{{ t('account.counterparty') }}</th>
+    <th class="num">{{ t('account.money_out') }}</th>
+    <th class="num">{{ t('account.money_in') }}</th>
+    <th class="num">{{ t('account.balance') }}</th>
+  </tr>
+
+  {# Reported intraday, above the statements and outside them: not yet in
+     an end-of-day statement, so nothing here moves the balance. #}
+  {% if overview.intraday %}
+  <tr><th colspan="6">{{ t('statements.since_last') }}
+      <span class="hint">{{ t('statements.since_last_note') }}</span></th></tr>
+  {% for line in overview.intraday %}
+  {{ ledger_row.row(line, false) }}
+  {% endfor %}
+  {% endif %}
+
+  {# One group per statement, newest first, and the statement is the link:
+     the day's own page keeps document order and the normalised JSON. #}
+  {% for day in overview.days %}
+  <tr><th colspan="6" class="day">
+    <a href="/ui/statements/{{ day.row.statement_id }}">{{ day.date | day }}</a>
+    <small>{{ day.row.message_type }}
+      {%- if day.row.identification %} · <code>{{ day.row.identification }}</code>{% endif %}
+      · +{{ day.ledger.credited | amount }} · &minus;{{ day.ledger.debited | amount }}</small></th></tr>
+  {% for line in day.lines %}
+  {{ ledger_row.row(line, day.ledger.running) }}
+  {% else %}
+  <tr><td colspan="6"><span class="empty">{{ t('account.no_entries') }}</span></td></tr>
+  {% endfor %}
+  {% else %}
+  <tr><td colspan="6"><span class="empty">{{ t('statements.no_statements_in_period') }}</span></td></tr>
+  {% endfor %}
+</table>
+<p class="hint">{{ t('account.balance_derived') }}</p>
+</div>
+{% endif %}
+
+{% elif family == 'response' %}
+{# ---- bank responses: what the bank said, and about which order. No amount
+   and no counterparty: the index is held to the rule the webhook envelope
+   is, and the money is one click away on the report itself. ---------------- #}
 <form class="filters" method="get" action="/ui/statements">
   <input type="hidden" name="family" value="{{ family }}">
   <div><label for="connection_id">{{ t('common.connection') }}</label>
@@ -35,15 +204,10 @@
     </select></div>
   <button type="submit" class="secondary">{{ t('common.filter') }}</button>
 </form>
-
 <div class="card">
 {% if not statements %}
 <p class="empty">{{ t('statements.empty') }}</p>
-
-{% elif family == 'response' %}
-{# What the bank said, and about which order. No amount and no counterparty:
-   the index is held to the rule the webhook envelope is, and the money is one
-   click away on the report itself. #}
+{% else %}
 <table>
   <tr><th>{{ t('statements.reports_on') }}</th><th>{{ t('order.status') }}</th>
       <th class="num">{{ t('order.accepted_count') }}</th>
@@ -67,11 +231,35 @@
   </tr>
   {% endfor %}
 </table>
+{% endif %}
+</div>
 
 {% else %}
-{# An account and its balances. The statement id is how the service names the
-   row and matters once you already have the right one, so it is not what the
-   eye lands on. #}
+{# ---- the documents: an account and its balances, one row per statement.
+   No entries here on purpose; they are on the statement and on the account
+   the reader chose. --------------------------------------------------------- #}
+<form class="filters" method="get" action="/ui/statements">
+  <input type="hidden" name="family" value="{{ family }}">
+  <div><label for="connection_id">{{ t('common.connection') }}</label>
+    <select id="connection_id" name="connection_id">
+      <option value="">{{ t('common.every_connection') }}</option>
+      {% for row in connections %}
+      <option value="{{ row.connection_id }}" {{ 'selected' if row.connection_id == selected_connection else '' }}>{{ row.connection_id }}</option>
+      {% endfor %}
+    </select></div>
+  <div><label for="message_type">{{ t('statements.message_type') }}</label>
+    <select id="message_type" name="message_type">
+      <option value="">{{ t('statements.any_type') }}</option>
+      {% for value in message_types %}
+      <option value="{{ value }}" {{ 'selected' if value == selected_type else '' }}>{{ value }}</option>
+      {% endfor %}
+    </select></div>
+  <button type="submit" class="secondary">{{ t('common.filter') }}</button>
+</form>
+<div class="card">
+{% if not statements %}
+<p class="empty">{{ t('statements.empty') }}</p>
+{% else %}
 <table>
   <tr><th>{{ t('statements.account') }}</th><th>{{ t('statement.period') }}</th>
       <th class="num">{{ t('statements.closing_balance') }}</th>
@@ -95,4 +283,5 @@
 </table>
 {% endif %}
 </div>
+{% endif %}
 {% endblock %}

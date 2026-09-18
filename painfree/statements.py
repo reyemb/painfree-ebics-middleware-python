@@ -78,6 +78,14 @@ ACCOUNTS = "account"
 RESPONSES = "response"
 FAMILIES: dict[str, str] = {ACCOUNTS: "camt.%", RESPONSES: "pain.002%"}
 
+#: End-of-day statements alone. An account overview is built from these and
+#: not from the intraday reports and advices that repeat the same entries
+#: (`camt.052`, `camt.054`): counting an entry twice is worse than a page that
+#: is a day behind.
+STATEMENTS = "camt.053%"
+#: What an intraday report is, for the overview's "since the last statement".
+INTRADAY = "camt.052%"
+
 
 def _of_family(query: Any, family: str | None) -> Any:
     """Narrow a statement query to one family, or leave it alone."""
@@ -313,6 +321,91 @@ class StatementStore:
                 query.limit(max(1, min(limit, 500)))).mappings().all()
         return [{name: value for name, value in row.items() if name != "payload"}
                 | {"outcome": resolve(row["payload"] or {})} for row in rows]
+
+    def accounts(self, *, connection_ids: Sequence[str] | None = None
+                 ) -> list[dict[str, Any]]:
+        """Every account a `camt` document has been ingested for, per connection.
+
+        An account is what a reader of statements actually has in mind, and the
+        table has no row for one: it is the `(connection, IBAN, currency)` the
+        statements name. So it is derived here, with what the picker and the
+        overview need beside it -- how many documents, when the newest one
+        ends, and the closing balance the newest end-of-day statement stated.
+        A `camt.052` or `camt.054` says nothing about a closing balance, so the
+        figure is taken from a `camt.053` only, and is ``None`` until one has
+        arrived.
+        """
+        grouped = (select(statement.c.connection_id, statement.c.iban,
+                          statement.c.currency,
+                          func.count().label("documents"),
+                          func.max(statement.c.to_datetime).label("to_datetime"))
+                   .where(statement.c.iban.is_not(None))
+                   .group_by(statement.c.connection_id, statement.c.iban,
+                             statement.c.currency)
+                   .order_by(statement.c.connection_id, statement.c.iban,
+                             statement.c.currency))
+        grouped = _of_family(grouped, ACCOUNTS)
+        if connection_ids is not None:
+            grouped = grouped.where(
+                statement.c.connection_id.in_(list(connection_ids)))
+        # The newest end-of-day statement per account, for its closing balance.
+        # Newest by the period it covers, not by arrival: a replayed window
+        # brings old statements in late, and they do not become the balance.
+        ends = func.coalesce(statement.c.to_datetime, statement.c.ingested_at)
+        newest = (select(statement.c.connection_id, statement.c.iban,
+                         statement.c.currency, func.max(ends).label("ends"))
+                  .where(statement.c.message_type.like(STATEMENTS))
+                  .group_by(statement.c.connection_id, statement.c.iban,
+                            statement.c.currency)).subquery()
+        closing = (select(statement.c.connection_id, statement.c.iban,
+                          statement.c.currency, statement.c.closing_balance,
+                          statement.c.to_datetime, statement.c.statement_id)
+                   .join(newest, (statement.c.connection_id == newest.c.connection_id)
+                         & (statement.c.iban == newest.c.iban)
+                         & (statement.c.currency == newest.c.currency)
+                         & (ends == newest.c.ends))
+                   .where(statement.c.message_type.like(STATEMENTS))
+                   .order_by(statement.c.seq))
+        with self._engine.connect() as connection:
+            accounts = [dict(row) for row in
+                        connection.execute(grouped).mappings().all()]
+            latest = {(row["connection_id"], row["iban"], row["currency"]): row
+                      for row in connection.execute(closing).mappings().all()}
+        for account in accounts:
+            row = latest.get((account["connection_id"], account["iban"],
+                              account["currency"]))
+            account["closing_balance"] = row["closing_balance"] if row else None
+            account["closing_at"] = row["to_datetime"] if row else None
+            account["latest_statement_id"] = row["statement_id"] if row else None
+        return accounts
+
+    def for_account(self, connection_id: str, iban: str, *,
+                    pattern: str = STATEMENTS,
+                    since: _dt.datetime | None = None,
+                    limit: int = 400) -> list[dict[str, Any]]:
+        """One account's documents of one kind, newest first, **with** payloads.
+
+        Newest by the period covered, so a statement fetched late by a replayed
+        window falls into its place rather than on top.
+
+        The one list that carries entries, because it is the one page that is
+        about a single account a reader chose: the same exposure as opening
+        each of its statements in turn, which is what this saves them doing.
+        ``since`` is read against the period the document covers, and against
+        its arrival for a document that names no period.
+        """
+        ends = func.coalesce(statement.c.to_datetime, statement.c.ingested_at)
+        query = (select(statement)
+                 .where(statement.c.connection_id == connection_id,
+                        statement.c.iban == iban,
+                        statement.c.message_type.like(pattern))
+                 .order_by(ends.desc(), statement.c.seq.desc()))
+        if since is not None:
+            query = query.where(ends >= since)
+        with self._engine.connect() as connection:
+            rows = connection.execute(
+                query.limit(max(1, min(limit, 1000)))).mappings().all()
+        return [dict(row) for row in rows]
 
     def message_types(self) -> list[str]:
         """The distinct message types held, so a filter offers what exists."""

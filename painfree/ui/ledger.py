@@ -33,8 +33,9 @@ has the database; this only says which references to look up.
 from __future__ import annotations
 
 import decimal
+import math
 from dataclasses import dataclass
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable, Mapping, Sequence
 
 #: `Sts/Cd` for an entry that has been posted. Anything else is money the bank
 #: has told us about and not booked, whatever it called that state.
@@ -132,6 +133,184 @@ class Ledger:
         return self.booked
 
 
+@dataclass(frozen=True, slots=True)
+class Day:
+    """One end-of-day statement inside an account overview.
+
+    The heading row of a group and the lines under it, newest entry first,
+    which is the order a person scanning "what happened lately" reads in. The
+    statement's own page keeps document order; the two are different questions.
+    """
+
+    row: Mapping[str, Any]
+    ledger: Ledger
+    lines: tuple[Line, ...]
+
+    @property
+    def date(self) -> Any:
+        return self.row.get("to_datetime") or self.row.get("ingested_at")
+
+
+@dataclass(frozen=True, slots=True)
+class Overview:
+    """One account over a period: its statements read as one ledger.
+
+    Built from end-of-day statements only. An intraday report and a
+    notification repeat entries the statement will carry, and an overview that
+    added them up would count money twice; what they add is *recency*, so the
+    entries they report after the newest statement are shown separately, with
+    no balance beside them, as :attr:`intraday`.
+    """
+
+    days: tuple[Day, ...]
+    intraday: tuple[Line, ...]
+    credited: decimal.Decimal
+    debited: decimal.Decimal
+    credits: int
+    debits: int
+    ours: int
+    #: Consecutive statements whose balances do not meet: the older one closed
+    #: with a figure the newer one did not open with. A gap is a statement this
+    #: service has not got, and is the one thing an overview must not paper
+    #: over.
+    gaps: tuple[tuple[Mapping[str, Any], Mapping[str, Any]], ...]
+    #: The closing balance of every statement that stated one, oldest first.
+    points: tuple[tuple[Any, decimal.Decimal], ...]
+
+    @property
+    def newest(self) -> Mapping[str, Any] | None:
+        return self.days[0].row if self.days else None
+
+    @property
+    def oldest(self) -> Mapping[str, Any] | None:
+        return self.days[-1].row if self.days else None
+
+    @property
+    def closing(self) -> decimal.Decimal | None:
+        """The balance the newest statement stated, which is *the* balance."""
+        return self.newest["closing_balance"] if self.newest else None
+
+    @property
+    def continuous(self) -> bool:
+        return not self.gaps
+
+    def chart(self, width: int = 720, height: int = 160) -> dict[str, Any] | None:
+        """The closing balances as a line, in SVG user units.
+
+        Geometry and nothing else: the figures a reader acts on are the decimal
+        ones on the page, and this is a picture of their shape. Floats are fine
+        for a picture. ``None`` when there are not two points to join.
+        """
+        if len(self.points) < 2:
+            return None
+        left, right, top, bottom = 64, 12, 10, 26
+        values = [float(value) for _, value in self.points]
+        low, high = min(values), max(values)
+        pad = (high - low) * 0.15 or max(abs(high) * 0.05, 1.0)
+        low, high = low - pad, high + pad
+        span = len(self.points) - 1
+
+        def x(index: int) -> float:
+            return left + index / span * (width - left - right)
+
+        def y(value: float) -> float:
+            return top + (1 - (value - low) / (high - low)) * (height - top - bottom)
+
+        step = _nice_step((high - low) / 3)
+        ticks = []
+        tick = -(-low // step) * step
+        while tick <= high:
+            ticks.append({"y": round(y(tick), 1), "value": int(tick)})
+            tick += step
+        path = " ".join(f"{'M' if i == 0 else 'L'}{x(i):.1f} {y(v):.1f}"
+                        for i, v in enumerate(values))
+        floor = f"{y(low):.1f}"
+        return {
+            "width": width, "height": height, "left": left,
+            "right": width - right, "bottom": height - 6,
+            "path": path,
+            "area": f"{path} L{x(span):.1f} {floor} L{left} {floor} Z",
+            "ticks": ticks,
+            "end": {"x": round(x(span), 1), "y": round(y(values[-1]), 1)},
+            "first": self.points[0][0], "last": self.points[-1][0],
+        }
+
+
+def _nice_step(raw: float) -> float:
+    """A gridline spacing a reader would have chosen: 1, 2 or 5 times a power of ten."""
+    if raw <= 0:
+        return 1.0
+    power = 10 ** math.floor(math.log10(raw))
+    mantissa = raw / power
+    factor = 1 if mantissa < 1.5 else 2 if mantissa < 3.5 else 5 if mantissa < 7.5 else 10
+    return factor * power
+
+
+def overview(rows: Sequence[Mapping[str, Any]], *,
+             orders: Mapping[str, str] | None = None, show: str = "all",
+             intraday: Sequence[Mapping[str, Any]] = ()) -> Overview:
+    """One account's end-of-day statements, newest first, read as one ledger.
+
+    ``rows`` are statement rows with their payloads, newest first. Each is read
+    with :func:`read` against its own opening and closing balance, so every
+    line's balance is still the bank's arithmetic checked per statement, and
+    the totals are sums over what those statements booked.
+    """
+    days = []
+    credited = debited = decimal.Decimal(0)
+    credits = debits = ours = 0
+    for row in rows:
+        book = read(row.get("payload") or {}, opening=row.get("opening_balance"),
+                    closing=row.get("closing_balance"), orders=orders)
+        days.append(Day(row=row, ledger=book,
+                        lines=tuple(reversed(book.showing(show)))))
+        credited += book.credited
+        debited += book.debited
+        credits += book.credits
+        debits += book.debits
+        ours += book.ours
+
+    gaps = []
+    for older, newer in zip(reversed(rows), list(reversed(rows))[1:]):
+        closing, opening = older.get("closing_balance"), newer.get("opening_balance")
+        if closing is not None and opening is not None and closing != opening:
+            gaps.append((older, newer))
+
+    points = tuple((row.get("to_datetime") or row.get("ingested_at"),
+                    row["closing_balance"])
+                   for row in reversed(rows)
+                   if row.get("closing_balance") is not None)
+
+    return Overview(days=tuple(days), intraday=_since_last(intraday, orders),
+                    credited=credited, debited=debited, credits=credits,
+                    debits=debits, ours=ours, gaps=tuple(gaps), points=points)
+
+
+def _since_last(reports: Sequence[Mapping[str, Any]],
+                orders: Mapping[str, str] | None) -> tuple[Line, ...]:
+    """The entries the intraday reports carry, each once, newest report first.
+
+    Two reports of the same day repeat each other's entries; a bank reference
+    names an entry across them, and an entry without one is told apart by what
+    it is.
+    """
+    orders = orders or {}
+    seen: set[Any] = set()
+    lines: list[Line] = []
+    for report in reports:
+        for entry in reversed((report.get("payload") or {}).get("entries") or ()):
+            key = (entry.get("reference") or entry.get("account_servicer_reference")
+                   or (entry.get("booking_date"), entry.get("amount"),
+                       entry.get("credit_debit")))
+            if key in seen:
+                continue
+            seen.add(key)
+            lines.append(Line(entry=entry, credit=entry.get("credit_debit") == "credit",
+                              amount=_amount(entry.get("amount")),
+                              order_id=_order_for(entry, orders)))
+    return tuple(lines)
+
+
 def message_ids(payload: Mapping[str, Any]) -> set[str]:
     """Every `MsgId` the entries name: the candidates for one of our orders."""
     return {transaction["message_identification"]
@@ -196,5 +375,5 @@ def _amount(value: Any) -> decimal.Decimal | None:
         return None
 
 
-__all__: Iterable[str] = ["BOOKED", "SHOWS", "Ledger", "Line", "message_ids",
-                          "read"]
+__all__: Iterable[str] = ["BOOKED", "SHOWS", "Day", "Ledger", "Line", "Overview",
+                          "message_ids", "overview", "read"]
