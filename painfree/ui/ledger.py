@@ -281,30 +281,68 @@ def overview(rows: Sequence[Mapping[str, Any]], *,
                    for row in reversed(rows)
                    if row.get("closing_balance") is not None)
 
-    return Overview(days=tuple(days), intraday=_since_last(intraday, orders),
+    known: set[Any] = set()
+    for row in rows:
+        for entry in (row.get("payload") or {}).get("entries") or ():
+            known |= _identities(entry)
+    return Overview(days=tuple(days),
+                    intraday=_since_last(intraday, orders, known),
                     credited=credited, debited=debited, credits=credits,
                     debits=debits, ours=ours, gaps=tuple(gaps), points=points)
 
 
-def _since_last(reports: Sequence[Mapping[str, Any]],
-                orders: Mapping[str, str] | None) -> tuple[Line, ...]:
-    """The entries the intraday reports carry, each once, newest report first.
+def _identities(entry: Mapping[str, Any]) -> set[Any]:
+    """Every name under which another document could carry this same entry.
 
-    Two reports of the same day repeat each other's entries; a bank reference
-    names an entry across them, and an entry without one is told apart by what
-    it is.
+    The bank's own booking reference (`AcctSvcrRef`) is the one meant for
+    this; it is on the entry, or on its transactions, and a report and the
+    statement that follows it quote the same one. A transaction's `MsgId` or
+    end-to-end id with the amount is nearly as good. `NtryRef` alone is not:
+    some banks number entries per document, so it only counts beside what
+    the entry is. The last key is the entry's shape, for a bank that sends no
+    reference at all.
+    """
+    amount, direction = entry.get("amount"), entry.get("credit_debit")
+    keys: set[Any] = set()
+    if entry.get("account_servicer_reference"):
+        keys.add(("acsr", entry["account_servicer_reference"]))
+    if entry.get("reference"):
+        keys.add(("ref", entry["reference"], entry.get("booking_date"),
+                  amount, direction))
+    for transaction in entry.get("transactions") or ():
+        if transaction.get("account_servicer_reference"):
+            keys.add(("acsr", transaction["account_servicer_reference"]))
+        for name in ("message_identification", "end_to_end_id", "uetr"):
+            if transaction.get(name):
+                keys.add((name, transaction[name],
+                          transaction.get("amount") or amount, direction))
+    if not keys:
+        party = (entry.get("transactions") or [{}])[0].get("counterparty") or {}
+        keys.add(("shape", entry.get("booking_date"), amount, direction,
+                  party.get("iban") or party.get("name")))
+    return keys
+
+
+def _since_last(reports: Sequence[Mapping[str, Any]],
+                orders: Mapping[str, str] | None,
+                known: set[Any]) -> tuple[Line, ...]:
+    """The entries the reports carry that no statement has, each once.
+
+    An intraday report is issued before the day's statement and then again
+    after it; the statement carries what the reports announced, and two
+    reports of one day repeat each other. Anything already known -- from a
+    statement on the page or from a newer report -- is not news, and is not
+    shown twice.
     """
     orders = orders or {}
-    seen: set[Any] = set()
+    seen = set(known)
     lines: list[Line] = []
     for report in reports:
         for entry in reversed((report.get("payload") or {}).get("entries") or ()):
-            key = (entry.get("reference") or entry.get("account_servicer_reference")
-                   or (entry.get("booking_date"), entry.get("amount"),
-                       entry.get("credit_debit")))
-            if key in seen:
+            keys = _identities(entry)
+            if keys & seen:
                 continue
-            seen.add(key)
+            seen |= keys
             lines.append(Line(entry=entry, credit=entry.get("credit_debit") == "credit",
                               amount=_amount(entry.get("amount")),
                               order_id=_order_for(entry, orders)))

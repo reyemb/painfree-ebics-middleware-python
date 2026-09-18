@@ -16,6 +16,7 @@ are all compared before and after.
 
 from __future__ import annotations
 
+import re
 from decimal import Decimal
 
 import pytest
@@ -912,6 +913,21 @@ def test_the_overview_says_when_a_statement_is_missing_and_what_came_since(
     assert "Since the last statement" in page.text
     # The report's own figure, apart from the ledger and with no balance.
     assert "9,007,199,254,740,993.01" in page.text
+    # A report issued after the statement repeats what the statement booked.
+    # That entry is known, and is not news. (The report's period is after the
+    # statement's, which is what puts the report on the page at all.)
+    entries = re.findall(rb"<Ntry>.*?</Ntry>", first, re.S)
+    repeated = next(e for e in entries if b"Robert Schneider AG" in e)
+    report = fixture_bytes("camt.052.001.08")
+    report = (report.replace(b"CH-RPT-20260829-1200", b"CH-RPT-20260829-1800")
+              .replace(b"RPT-2026-0829-1200", b"RPT-2026-0829-1800")
+              .replace(b"</Ntry>", b"</Ntry>" + repeated, 1))
+    StatementStore(engine).ingest(BANK_CONNECTION_ID, [report])
+    page = client.get("/ui/statements", headers=_admin())
+    since = page.text.split("Since the last statement")[-1].split('class="day"')[0]
+    assert "9,007,199,254,740,993.01" in since
+    assert "Robert Schneider AG" not in since, "already booked by the statement"
+    assert since.count("<summary>") == 1, "one line, shown once"
     # Both statements are groups of the ledger, newest period first whatever
     # the order they arrived in, each linked.
     assert page.text.index("STMT-2026-0242") < page.text.index("STMT-2026-0241")
