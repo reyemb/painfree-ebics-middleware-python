@@ -185,14 +185,19 @@ def evidence(payload: dict[str, Any]) -> list[Evidence]:
 
 def _reason(info: dict[str, Any] | None,
             entry: dict[str, Any]) -> tuple[str | None, str | None]:
-    """The bank's reason code and its words, from `RtrInf` or the entry."""
+    """The bank's reason code and its reason, from `RtrInf` alone.
+
+    Never the entry's own text. `AddtlNtryInf` is free text, and on a return
+    it names the payee and their address -- which would put a counterparty
+    into the order's response and its event. The entry stays in the stored
+    statement, one click away on the console.
+    """
+    del entry
     code = None
     words: list[str] = []
     if info:
         code = info.get("reason_code") or info.get("reason_proprietary")
         words = list(info.get("additional_information") or ())
-    if not words and entry.get("additional_information"):
-        words = [entry["additional_information"]]
     text = " ".join(" ".join(words).split()) or None
     if text and len(text) > MAX_TEXT:
         text = text[:MAX_TEXT - 1] + "…"
@@ -389,8 +394,10 @@ class ReturnMatcher:
                                 reason="several open orders look like this "
                                        "booking; no return is suspected")
                 continue
+            bank = next(pattern.bank for pattern in patterns
+                        if pattern.sentence.search(words))
             self._raise(connection_id, statement_id, orders[0], entry,
-                        _short(words), booked, payload, replay)
+                        _short(words), booked, payload, replay, bank)
 
     def _lookalikes(self, connection_id: str, iban: str, amount: str,
                     currency: str | None,
@@ -438,8 +445,11 @@ class ReturnMatcher:
     def _raise(self, connection_id: str, statement_id: str,
                order: dict[str, Any], entry: dict[str, Any], words: str,
                booked: _dt.datetime, payload: dict[str, Any],
-               replay: bool) -> None:
-        """Mark the order suspected, once per booking, and say so."""
+               replay: bool, pattern_bank: str) -> None:
+        """Mark the order suspected, once per booking, and say so.
+
+        ``words`` is stored on the order for the console and goes nowhere else.
+        """
         reference = (entry.get("account_servicer_reference")
                      or entry.get("reference"))
         now = _dt.datetime.now(_dt.timezone.utc)
@@ -463,7 +473,9 @@ class ReturnMatcher:
         detail = {"order_state": order["state"], "statement_id": statement_id,
                   "entry_ref": reference,
                   "booking_date": entry.get("booking_date"),
-                  "reason_text": words, "matched_by": "heuristic",
+                  # Not the bank's sentence: it names the payee and their
+                  # address. The console shows it.
+                  "bank": pattern_bank, "matched_by": "heuristic",
                   "source": payload.get("message_type"),
                   "rereconciled": True if replay else None,
                   **scheme_fields(order["requested_scheme"], order["scheme"],
@@ -505,7 +517,10 @@ class ReturnMatcher:
                     return_statement_id=row["return_suspected_statement_id"],
                     return_entry_ref=row["return_suspected_entry_ref"],
                     return_reason_code=None,
-                    return_reason_text=row["return_suspected_text"],
+                    # The suspicion's sentence stays where it is, on the
+                    # console; `return_reason_text` is in the response and
+                    # the event.
+                    return_reason_text=None,
                     return_matched_by=OPERATOR, updated_at=now)
             .returning(payment_order.c.order_id))
         with self._engine.begin() as connection:
@@ -522,7 +537,6 @@ class ReturnMatcher:
                 detail={name: value for name, value in {
                     "order_state": OrderState.RETURNED.value,
                     "previous_state": row["state"],
-                    "reason_text": row["return_suspected_text"],
                     "statement_id": row["return_suspected_statement_id"],
                     "entry_ref": row["return_suspected_entry_ref"],
                     "booking_date": (row["return_suspected_booked_at"].date()

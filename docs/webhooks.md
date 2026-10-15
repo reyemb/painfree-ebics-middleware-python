@@ -38,7 +38,7 @@ greps in the audit trail and in the container logs.
 | `order.submitted` | the bank returned an `OrderID` | `order_state`, `bank_order_id`, `return_code` |
 | `order.rejected` | **the bank** refused — at submission, or in a `pain.002` | `order_state`, then either `return_code`, `return_code_name`, `report_text` or `source`, `status`, `status_name`, `reason_code`, `reason_text`, `statement_id`, `msg_id`, and `revokes_status` when it overturns an earlier `order.acknowledged` |
 | `order.failed` | painfree gave up after the retry ceiling | `order_state`, `attempts`, `reason` |
-| `order.return_suspected` | a credit looks like this order's money coming back, and the bank did not mark it as a return; a person has to decide | `order_state` (unchanged), `statement_id`, `entry_ref`, `booking_date`, `reason_text` (the bank's sentence), `matched_by: heuristic`, `source` |
+| `order.return_suspected` | a credit looks like this order's money coming back, and the bank did not mark it as a return; a person has to decide | `order_state` (unchanged), `statement_id`, `entry_ref`, `booking_date`, `bank` (whose wording matched), `matched_by: heuristic`, `source` |
 | `order.return_dismissed` | a person decided a suspected return was not one | `order_state`, `statement_id`, `entry_ref` |
 | `order.returned` | the bank took the payment, then booked the money back: it did **not** reach the beneficiary | `order_state`, `previous_state`, `source` (the `camt` message type), `statement_id`, `entry_ref`, `booking_date`, `matched_by`, and where the bank gave them `reason_code`, `reason_text` |
 | `order.acknowledged` | a `pain.002` naming the order's `MsgId` says the bank took the payment | `order_state`, `source`, `status`, `status_name`, `statement_id`, `msg_id`, and where the bank gave them `reason_code`, `reason_text`, `transactions_accepted`, `transactions_rejected` |
@@ -92,7 +92,9 @@ other acknowledgement, `PART` included, a later refusal changes nothing.
 a `camt` statement that the bank marks as a return (`RtrInf`, `RvslInd` or a
 `RRTN` code) and that names the order and returns its whole amount.
 `matched_by` says which mark it was: `rtrinf`, `reversal`, or `operator` when a
-person confirmed it. `reason_code` is the ISO return reason (`AC01` incorrect
+person confirmed it. `reason_text` is the bank's structured return reason
+(`RtrInf`) and nothing else. The free text a bank writes on the booking often
+names the payee and their address, so it is never sent; the console shows it. `reason_code` is the ISO return reason (`AC01` incorrect
 account number, `AC04` closed account, `BE04` missing creditor address, ...).
 Subscribe to it if you treat `order.acknowledged` as "paid".
 

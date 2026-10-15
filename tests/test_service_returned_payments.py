@@ -686,8 +686,11 @@ def test_the_order_page_says_the_money_came_back_and_where(console):
 
 #: An account at St.Galler Kantonalbank: clearing number 781 in the IBAN.
 SGKB_ACCOUNT = "CH9300781000012345678"
+#: The shape of the production booking: the bank names the payee and their
+#: address in the same sentence that says the money came back.
+PAYEE = "Erika Muster, CH Musterweg 7 9000 St. Gallen"
 SGKB_TEXT = ("Rueckleitung Ihrer Zahlung vom 14.10.2026., Referenznummer "
-             "2026101400042 Beguenstigter unbekannt / ungenau")
+             f"2026101400042 {PAYEE} Beguenstigter unbekannt / ungenau")
 
 
 def _today() -> str:
@@ -794,7 +797,8 @@ def test_confirming_returns_the_order_and_names_the_person(bank):
     returned = OrderStore(engine).get(order.order_id)
     assert (returned.state, returned.return_matched_by) == (
         OrderState.RETURNED, "operator")
-    assert returned.return_reason_text == SGKB_TEXT
+    assert returned.return_reason_text is None, "the sentence is not a reason"
+    assert returned.return_suspected_text == SGKB_TEXT, "kept for the console"
     assert not returned.return_suspected
     with engine.connect() as connection:
         actor = connection.execute(
@@ -916,3 +920,70 @@ def test_the_status_codes_page_says_acknowledged_is_not_received(console):
     page = client.get("/ui/status-codes",
                       headers={**dev_credentials("alice", "admin"), **BROWSER})
     assert "not that the beneficiary received it" in page.text
+
+
+
+# --- the bank's sentence stays on the console ------------------------------
+
+def _everything_sent(engine, order_id: str) -> str:
+    """Every audit detail and every queued envelope for one order, as text."""
+    import json
+
+    from painfree.schema import webhook_delivery
+
+    with engine.connect() as connection:
+        details = connection.execute(
+            select(audit_log.c.detail)
+            .where(audit_log.c.order_id == order_id)).scalars().all()
+        envelopes = connection.execute(
+            select(webhook_delivery.c.payload)
+            .where(webhook_delivery.c.order_id == order_id)).scalars().all()
+    return json.dumps([details, envelopes], ensure_ascii=False)
+
+
+def test_a_suspected_return_names_nobody_in_its_event_or_response(
+        bank, custody_settings):
+    from painfree.audit import Actor
+    from painfree.webhooks import WebhookSubscriptions
+
+    engine, store, _ = bank
+    WebhookSubscriptions(engine, custody_settings.custody_key()).register(
+        "https://consumer.example.test/all",
+        ["order.return_suspected", "order.returned"],
+        connection_id=BANK_CONNECTION_ID)
+    order = sgkb_order(engine, store)
+
+    book(store, sgkb_return())
+    suspected = OrderStore(engine).get(order.order_id).as_response()
+    store.returns.confirm(order.order_id, actor=Actor("user", "olive"))
+    returned = OrderStore(engine).get(order.order_id).as_response()
+
+    for text in (_everything_sent(engine, order.order_id),
+                 str(suspected), str(returned)):
+        assert "Erika Muster" not in text and "Musterweg" not in text
+    assert detail(engine, order.order_id,
+                  "payment.return_suspected")["bank"] == "SGKB"
+
+
+def test_a_marked_return_takes_its_reason_from_rtrinf_not_the_entry(bank):
+    engine, store, _ = bank
+    order = acknowledged(engine, store)
+
+    book(store, statement(credit(msg_id=order.msg_id, return_reason="AC01",
+                                 entry_text=f"Rueckleitung {PAYEE}")))
+
+    returned = OrderStore(engine).get(order.order_id)
+    assert returned.return_reason_code == "AC01"
+    assert returned.return_reason_text is None
+    assert "Erika Muster" not in _everything_sent(engine, order.order_id)
+
+
+def test_the_console_still_shows_the_sentence(console):
+    client, engine = console
+    store = StatementStore(engine)
+    order = sgkb_order(engine, store, "returns-sentence")
+    book(store, sgkb_return())
+
+    page = client.get(f"/ui/orders/{order.order_id}",
+                      headers={**dev_credentials("alice", "admin"), **BROWSER})
+    assert "Erika Muster" in page.text

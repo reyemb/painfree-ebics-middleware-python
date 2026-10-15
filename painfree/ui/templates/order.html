@@ -44,7 +44,9 @@
   <p><strong>{{ t('order.returned_heading') }}</strong> {{ t('order.returned_body') }}</p>
   <table class="plain">
     <tr><td>{{ t('order.reason_code') }}</td><td>{% if order.return_reason_code %}<code>{{ order.return_reason_code }}</code>{% else %}—{% endif %}</td></tr>
-    <tr><td>{{ t('order.reason_text') }}</td><td>{{ bank.words(order.return_reason_text) }}</td></tr>
+    {# A confirmed suspicion carries no reason of the bank's; its sentence is
+       the suspicion's, and is shown here rather than sent anywhere. #}
+    <tr><td>{{ t('order.reason_text') }}</td><td>{{ bank.words(order.return_reason_text or (order.return_suspected_text if order.return_matched_by == 'operator' else none)) }}</td></tr>
     <tr><td>{{ t('order.returned_booking') }}</td><td>{{ order.returned_at | moment }}
         {% if order.return_entry_ref %}<br><code>{{ order.return_entry_ref }}</code>{% endif %}</td></tr>
     <tr><td>{{ t('order.returned_statement') }}</td><td>{% if order.return_statement_id %}<a href="/ui/statements/{{ order.return_statement_id }}"><code>{{ order.return_statement_id }}</code></a>{% else %}—{% endif %}</td></tr>

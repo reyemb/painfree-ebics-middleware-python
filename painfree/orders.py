@@ -251,13 +251,14 @@ class PaymentOrder:
         if self.return_suspected_at and self.state is not OrderState.RETURNED:
             # Raised by a rule, not by the bank, and said that way: a consumer
             # reads `dismissed_at` to learn a person decided it was not one.
+            # The bank's sentence is not here: it names the payee and their
+            # address, and a response reports by reference.
             body["return_suspected"] = {
                 "suspected_at": self.return_suspected_at.isoformat(),
                 "booked_at": (self.return_suspected_booked_at.isoformat()
                               if self.return_suspected_booked_at else None),
                 "statement_id": self.return_suspected_statement_id,
                 "entry_ref": self.return_suspected_entry_ref,
-                "text": self.return_suspected_text,
                 "dismissed_at": (self.return_suspicion_dismissed_at.isoformat()
                                  if self.return_suspicion_dismissed_at
                                  else None),
