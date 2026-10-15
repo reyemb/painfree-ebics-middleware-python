@@ -14,6 +14,49 @@
 </div>
 {% endif %}
 
+{# A booking that looks like this order's money coming back, which the bank
+   did not mark as one. A rule raised it and a person decides it. #}
+{% if order.return_suspected %}
+<div class="card warn">
+  <p><strong>{{ t('order.suspected_heading') }}</strong> {{ t('order.suspected_body') }}</p>
+  <table class="plain">
+    <tr><td>{{ t('order.reason_text') }}</td><td>{{ bank.words(order.return_suspected_text) }}</td></tr>
+    <tr><td>{{ t('order.returned_booking') }}</td><td>{{ order.return_suspected_booked_at | moment }}
+        {% if order.return_suspected_entry_ref %}<br><code>{{ order.return_suspected_entry_ref }}</code>{% endif %}</td></tr>
+    <tr><td>{{ t('order.returned_statement') }}</td><td><a href="/ui/statements/{{ order.return_suspected_statement_id }}"><code>{{ order.return_suspected_statement_id }}</code></a></td></tr>
+  </table>
+  {% if may_on('orders:replay', order.connection_id) %}
+  <div class="actions">
+    <form method="post" action="/ui/orders/{{ order.order_id }}/return/confirm">
+      <button type="submit" class="danger">{{ t('order.suspected_confirm') }}</button></form>
+    <form method="post" action="/ui/orders/{{ order.order_id }}/return/dismiss">
+      <button type="submit" class="secondary">{{ t('order.suspected_dismiss') }}</button></form>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+{# The money came back. First on the page, because it overturns what the
+   acknowledgement below says. By reference: the booking, the bank's reason,
+   how it was tied to this order. #}
+{% if order.returned_at %}
+<div class="card bad">
+  <p><strong>{{ t('order.returned_heading') }}</strong> {{ t('order.returned_body') }}</p>
+  <table class="plain">
+    <tr><td>{{ t('order.reason_code') }}</td><td>{% if order.return_reason_code %}<code>{{ order.return_reason_code }}</code>{% else %}—{% endif %}</td></tr>
+    <tr><td>{{ t('order.reason_text') }}</td><td>{{ bank.words(order.return_reason_text) }}</td></tr>
+    <tr><td>{{ t('order.returned_booking') }}</td><td>{{ order.returned_at | moment }}
+        {% if order.return_entry_ref %}<br><code>{{ order.return_entry_ref }}</code>{% endif %}</td></tr>
+    <tr><td>{{ t('order.returned_statement') }}</td><td>{% if order.return_statement_id %}<a href="/ui/statements/{{ order.return_statement_id }}"><code>{{ order.return_statement_id }}</code></a>{% else %}—{% endif %}</td></tr>
+    <tr><td>{{ t('order.returned_matched') }}</td><td><code>{{ order.return_matched_by }}</code>
+        {{ t.maybe('return_matched.' ~ order.return_matched_by, '') }}</td></tr>
+  </table>
+  {% if may_on('payments:submit', order.connection_id) and order.transaction_count == 1 %}
+  <div class="actions"><a class="button" href="/ui/connections/{{ order.connection_id }}/payment?from_order={{ order.order_id }}">{{ t('order.returned_copy') }}</a></div>
+  {% endif %}
+</div>
+{% endif %}
+
 {# What the payment *is*, before the bookkeeping about it. An operator opening
    an order is checking who was paid and how much; the message id and the
    idempotency key matter afterwards, when something has gone wrong. Read out
@@ -222,6 +265,12 @@
 </table>
 {% else %}
 <p class="empty">{{ t('order.nothing_recorded') }}</p>
+{% endif %}
+{% if events and may_on('webhooks:manage', order.connection_id) %}
+<form method="post" action="/ui/orders/{{ order.order_id }}/resend-events" class="actions">
+  <button type="submit" class="secondary">{{ t('order.resend_events') }}</button>
+  <span class="hint">{{ t('order.resend_events_hint') }}</span>
+</form>
 {% endif %}
 </div>
 {% endblock %}

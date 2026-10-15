@@ -29,6 +29,13 @@ preview -- not a fresh one -- so that a double-click on confirm replays the
 first order instead of paying twice. A key minted at submission would have made
 this console the one caller that cannot be retried safely.
 
+**A returned payment is sent again from a copy, not replayed.** The form can
+open filled from an earlier order (``?from_order=``): its debtor, creditor,
+amount, reference and message, dated today, with a fresh idempotency key at
+preview like any other. A returned order is not replayable because a replay
+sends the same wrong creditor again; a copy is a new order the operator
+corrects first, and it goes through the same preview and confirm.
+
 **One transfer, not a batch.** This is the shape of a test payment and the
 whole of what the form offers; a batch editor in HTML would be a different
 feature with a different reason to exist. The API takes up to
@@ -46,11 +53,13 @@ from fastapi.responses import RedirectResponse
 from pydantic import ValidationError
 
 from painfree import ebics3, payments, sps
+from painfree.errors import ConflictError, NotFoundError
 from painfree.identity import Principal, Scope
 from painfree.logging import bind
 from painfree.authn import requires_on
 from painfree.ui.rendering import render
 from painfree.catalogue import Catalogue
+from painfree.painread import summarise
 from painfree.ui.views import PREFIX, _orders, _registry, form_data
 
 router = APIRouter(prefix=PREFIX, tags=["console"], include_in_schema=False)
@@ -254,7 +263,7 @@ def _blank() -> dict[str, str]:
 
 
 @router.get("/connections/{connection_id}/payment")
-def payment_form(request: Request, connection_id: str,
+def payment_form(request: Request, connection_id: str, from_order: str = "",
                  principal: Principal = Depends(
                      requires_on(Scope.payments_submit))):
     """The form. `payments:submit` **at this bank**, like the API route."""
@@ -262,9 +271,44 @@ def payment_form(request: Request, connection_id: str,
         connection = _registry(request).get(connection_id)
         entered = _blank()
         entered["debtor_name"] = _subscriber_name(request, connection_id)
+        source = None
+        if from_order:
+            source = _orders(request).get(from_order)
+            # The copy is of an order at *this* bank. One from another bank
+            # is answered as missing, the way the order page answers it.
+            if source.connection_id != connection_id:
+                raise NotFoundError(f"no order {from_order} at {connection_id}")
+            entered.update(copied_from(source))
         return render(request, "payment_new.html", connection=connection,
-                      entered=entered, failures=(),
+                      entered=entered, failures=(), copied=source,
                       accounts=_debit_accounts(request, connection_id))
+
+
+def copied_from(order: Any) -> dict[str, str]:
+    """The form fields of a single-transfer order, read from what was sent.
+
+    The `EndToEndId` is left out: the caller chose it for the first payment,
+    and a second payment carrying it would make the two indistinguishable in
+    the bank's own reports.
+    """
+    summary = summarise(order.document)
+    if summary is None or summary.batch or not summary.transfers:
+        raise ConflictError(
+            f"order {order.order_id} is not a single transfer this form can "
+            f"copy; a batch is re-sent through the API")
+    transfer = summary.transfers[0]
+    return {
+        "debtor_name": summary.debtor.name or "",
+        "debtor_iban": summary.debtor.iban or "",
+        "creditor_name": transfer.creditor.name or "",
+        "creditor_iban": transfer.creditor.iban or "",
+        "amount": transfer.amount or "",
+        "currency": transfer.currency or order.currency,
+        "reference_type": transfer.reference_type or "NONE",
+        "reference": transfer.reference or "",
+        "remittance_information": transfer.remittance or "",
+        "scheme": order.requested_scheme.value,
+    }
 
 
 @router.post("/connections/{connection_id}/payment/preview")

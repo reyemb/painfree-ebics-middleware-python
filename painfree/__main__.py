@@ -1,6 +1,6 @@
 """``python -m painfree`` -- serve, work, migrate, and look after the keys and the accounts.
 
-Ten subcommands, because a deployment needs all ten: the long-running HTTP
+Eleven subcommands, because a deployment needs all eleven: the long-running HTTP
 server, the long-running upload worker, a one-shot schema upgrade for
 deployments that would rather migrate in a job than at startup
 (``PAINFREE_MIGRATE_ON_STARTUP=false``), a generator for
@@ -40,6 +40,11 @@ configuration, because it exists for a host that has neither yet. It writes the
 operator scripts -- ``snapshot.sh`` and the rest -- to stdout as a tar, so a
 machine holding nothing but podman and this image can still take the backup that
 moves the deployment somewhere else.
+
+``reconcile`` is the step after an upgrade that changed what a stored document
+means. It reads the stored status reports and statements again under the
+rules in force now, so an order those rules would have moved does move, and
+its consumers are told.
 
 Configuration errors are printed as one JSON line and exit non-zero, in the same
 shape as everything else on stdout, so a container that refuses to start is read
@@ -271,6 +276,48 @@ def _unlock_command(settings: Settings, arguments: Any) -> int:
         engine.dispose()
 
 
+def _reconcile_command(settings: Settings, arguments: Any) -> int:
+    """``reconcile`` -- apply the rules in force now to documents stored before.
+
+    The step after an upgrade that changed what a report or a booking means:
+    without it, the stored documents keep the reading they were given when
+    they arrived, and a consumer is never told what the new reading is. Safe to
+    run twice; the second run moves nothing.
+    """
+    import datetime as _dt
+    import getpass
+
+    from painfree.audit import Actor, AuditLog
+    from painfree.db import build_engine
+    from painfree.statements import StatementStore
+
+    since = None
+    if arguments.since:
+        try:
+            since = _dt.date.fromisoformat(arguments.since)
+        except ValueError:
+            log.error("service.misconfigured",
+                      reason=f"--since {arguments.since!r} is not a date; "
+                             f"use YYYY-MM-DD")
+            return 2
+    if not wait_for_schema(settings):
+        return 4
+    try:
+        who = getpass.getuser()
+    except Exception:  # pragma: no cover - no passwd entry in a container
+        who = "unknown"
+    engine = build_engine(settings)
+    try:
+        result = StatementStore(engine, AuditLog(engine)).reconcile_stored(
+            connection_id=arguments.subject, since=since,
+            actor=Actor("cli", f"{who}@cli"))
+    finally:
+        engine.dispose()
+    log.info("statement.reconcile_finished", connection_id=arguments.subject,
+             examined=result.examined, moved=list(result.moved))
+    return 0
+
+
 def _accounts_store(engine: Any, settings: Settings, audit: Any):
     """The same store the request path verifies against, built the same way."""
     from painfree.accounts import Accounts
@@ -289,19 +336,21 @@ def main(argv: list[str] | None = None) -> int:
         "command", nargs="?", default="serve",
         choices=("serve", "worker", "migrate", "new-secret", "rekey",
                  "custody-status", "create-admin", "set-password",
-                 "unlock", "deploy-scripts"),
+                 "unlock", "deploy-scripts", "reconcile"),
         help="serve the API (default), run the upload worker, bring the schema "
              "to head and exit, print a fresh key encryption secret, re-seal "
              "every stored secret under a rotated one, report which custody "
              "keys the stored material is sealed under, create the first local "
              "administrator, set a local account's password, clear a "
-             "sign-in lockout, or write the operator scripts to stdout as a "
-             "tar",
+             "sign-in lockout, write the operator scripts to stdout as a "
+             "tar, or re-read the stored status reports and bank statements "
+             "under the current rules",
     )
     parser.add_argument(
         "subject", nargs="?", default=None,
         help="create-admin and set-password: the account name. unlock: the "
-             "account name or source address to stop throttling",
+             "account name or source address to stop throttling. reconcile: "
+             "the connection id, or every connection when left out",
     )
     parser.add_argument(
         "--dry-run", action="store_true",
@@ -318,6 +367,11 @@ def main(argv: list[str] | None = None) -> int:
         help="create-admin only: create an ordinary member instead of an "
              "administrator. A member signs in and holds nothing until an "
              "administrator grants it a bank connection",
+    )
+    parser.add_argument(
+        "--since", default=None, metavar="YYYY-MM-DD",
+        help="reconcile only: the first day of documents to re-read, by the "
+             "date the bank wrote them",
     )
     parser.add_argument(
         "--display-name", default=None,
@@ -421,6 +475,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if arguments.command == "unlock":
         return _unlock_command(settings, arguments)
+
+    if arguments.command == "reconcile":
+        return _reconcile_command(settings, arguments)
 
     if arguments.command == "migrate":
         from painfree.db import build_engine, migrate

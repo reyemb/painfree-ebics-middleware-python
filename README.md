@@ -14,8 +14,9 @@ your system  ──JSON/HTTPS──▶  painfree  ──EBICS 3.0 (H005)──�
 POST a payment as JSON. painfree validates it, builds a compliant `pain.001`,
 signs and encrypts it per the EBICS protocol, uploads it to the right bank
 connection, tracks the order to acknowledgement, and calls your webhook when the
-status changes. It runs the other direction too: scheduled downloads of
-`camt.052/053/054` and `pain.002`, normalised to JSON.
+status changes, including when a payment the bank took comes back. It runs the
+other direction too: scheduled downloads of `camt.052/053/054` and `pain.002`,
+normalised to JSON.
 
 A console at `/ui` handles everything that is not a payment: bank connections,
 EBICS initialisation, key management, order history, replay, audit.
@@ -97,7 +98,7 @@ away.
 The scripts are inside the image; take them out of it:
 
 ```bash
-podman run --rm ghcr.io/reyemb/painfree:0.9.1 deploy-scripts | tar x
+podman run --rm ghcr.io/reyemb/painfree:0.10.0 deploy-scripts | tar x
 ```
 
 That writes `deploy/` into the current directory — seven scripts, matching the
@@ -338,7 +339,17 @@ same `event_id`: deduplicate on that. Each request is signed
 body>"` with the subscription's own secret. Verify over the bytes you received,
 not over a re-serialisation. The full contract — every event type, what each one
 carries and what it deliberately does not, the secret and its rotation, and the
-delivery guarantees — is [docs/webhooks.md](docs/webhooks.md).
+delivery guarantees — is [docs/webhooks.md](docs/webhooks.md). An operator can
+send an event again under its own `event_id`, or send an order's current state
+to an endpoint registered after the fact.
+
+**Returned payments.** `acknowledged` means the bank took a payment, not that the
+beneficiary received it. When a statement books the money back and the bank marks
+the booking as a return, the order becomes `returned` and `order.returned` is
+sent. When the bank books it as an ordinary credit with a sentence in it (SGKB
+does), painfree raises a suspected return for a person to confirm. After an
+upgrade, `python -m painfree reconcile` applies the current rules to the
+documents already stored.
 
 **Keys.** INI, HIA and HPB from the console, with a printable INI letter,
 renewal and suspension. The bank's keys are trusted only once you have compared

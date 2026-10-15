@@ -36,13 +36,16 @@ greps in the audit trail and in the container logs.
 |---|---|---|
 | `order.accepted` | validated and enqueued | `msg_id`, `message_type`, `transactions`, `currency`, and the four scheme fields |
 | `order.submitted` | the bank returned an `OrderID` | `order_state`, `bank_order_id`, `return_code` |
-| `order.rejected` | **the bank** refused — at submission, or in a `pain.002` | `order_state`, then either `return_code`, `return_code_name`, `report_text` or `source`, `status`, `status_name`, `reason_code`, `reason_text`, `statement_id`, `msg_id` |
+| `order.rejected` | **the bank** refused — at submission, or in a `pain.002` | `order_state`, then either `return_code`, `return_code_name`, `report_text` or `source`, `status`, `status_name`, `reason_code`, `reason_text`, `statement_id`, `msg_id`, and `revokes_status` when it overturns an earlier `order.acknowledged` |
 | `order.failed` | painfree gave up after the retry ceiling | `order_state`, `attempts`, `reason` |
+| `order.return_suspected` | a credit looks like this order's money coming back, and the bank did not mark it as a return; a person has to decide | `order_state` (unchanged), `statement_id`, `entry_ref`, `booking_date`, `reason_text` (the bank's sentence), `matched_by: heuristic`, `source` |
+| `order.return_dismissed` | a person decided a suspected return was not one | `order_state`, `statement_id`, `entry_ref` |
+| `order.returned` | the bank took the payment, then booked the money back: it did **not** reach the beneficiary | `order_state`, `previous_state`, `source` (the `camt` message type), `statement_id`, `entry_ref`, `booking_date`, `matched_by`, and where the bank gave them `reason_code`, `reason_text` |
 | `order.acknowledged` | a `pain.002` naming the order's `MsgId` says the bank took the payment | `order_state`, `source`, `status`, `status_name`, `statement_id`, `msg_id`, and where the bank gave them `reason_code`, `reason_text`, `transactions_accepted`, `transactions_rejected` |
 | `statement.available` | a scheduled download produced a new document | `statement_id`, `message_type`, `kind`, `entries`, `run_id` |
 | `webhook.ping` | an operator asked for a test delivery | `subscription_id`, `requested_by`, `message` |
 
-Five things the table cannot say in a cell.
+Nine things the table cannot say in a cell.
 
 **`webhook.ping` is not subscribable.** No bank event produces one. Your
 endpoint receives one only because somebody aimed a test at that subscription,
@@ -73,7 +76,35 @@ no event. Nor does a report for an order that is already terminal, nor one
 naming a `MsgId` this deployment never sent. Events report changes, and none of
 those three is one.
 
-**Every order event carries the payment scheme.** `data` on all five `order.*`
+**`data.rereconciled: true` marks a late transition.** It appears when an
+operator re-read stored documents after an upgrade and the order moved then,
+rather than when the document arrived. The event is otherwise the same and
+has its own `event_id`.
+
+**`order.rejected` can follow `order.acknowledged`.** `ACTC`, `ACCP` and `ACFC`
+mean the bank *checked* the file, not that the money moved. If the bank later
+sends `RJCT` or `CANC` for it, the order becomes `rejected` and you receive
+`order.rejected` with `revokes_status` naming the acknowledgement it overturns.
+So don't treat `order.acknowledged` as "the beneficiary was paid". After any
+other acknowledgement, `PART` included, a later refusal changes nothing.
+
+**`order.returned` overturns `order.acknowledged`.** It comes from a booking in
+a `camt` statement that the bank marks as a return (`RtrInf`, `RvslInd` or a
+`RRTN` code) and that names the order and returns its whole amount.
+`matched_by` says which mark it was: `rtrinf`, `reversal`, or `operator` when a
+person confirmed it. `reason_code` is the ISO return reason (`AC01` incorrect
+account number, `AC04` closed account, `BE04` missing creditor address, ...).
+Subscribe to it if you treat `order.acknowledged` as "paid".
+
+**`order.return_suspected` is a question, not an answer.** Some banks book a
+return as an ordinary credit with a sentence in it. painfree recognises such a
+credit (from the order's creditor, for its amount, worded the way that bank
+words a return) and asks a person. Either `order.returned` follows with
+`matched_by: operator`, or `order.return_dismissed`. The order's state does
+not change until then. Flag the case for your own people if you act on
+returns.
+
+**Every order event carries the payment scheme.** `data` on every `order.*`
 events carries `scheme` (what was actually sent), `requested_scheme` (what you
 asked for), `scheme_downgraded` and `scheme_reason`. There is deliberately no
 new event type: if you asked for an instant payment and it went normal, you
@@ -190,6 +221,13 @@ actually using.
   blocks another one.
 - **Answer promptly.** The timeout is 15 seconds, and a slow consumer delays its
   own next event. Acknowledge with `2xx` first and do the work afterwards.
+- **Sent again on request, under the same `event_id`.** An operator can put a
+  delivered or failed event back in your queue, or send an order's current
+  state (its newest event) again. That also reaches an endpoint registered
+  after the event happened. If you already have it, your deduplication drops
+  it; if you lost it, you process it as the first delivery. A re-sent event
+  takes its old place in the order, so it comes before anything newer you are
+  still owed.
 
 ## Subscriptions
 

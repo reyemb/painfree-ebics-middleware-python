@@ -133,10 +133,16 @@
     <td>{% if row.last_status %}HTTP {{ row.last_status }}{% else %}—{% endif %}
         {% if row.last_error %}<br><small class="mono">{{ row.last_error }}</small>{% endif %}</td>
     <td>{{ row.occurred_at | moment }}</td>
-    <td>{{ row.delivered_at | moment }}</td>
+    <td>{{ row.delivered_at | moment }}
+        {% if row.state in ('delivered', 'failed') and subscription.enabled and not subscription.parked
+              and may_on('webhooks:manage', subscription.connection_id) %}
+        <form method="post" action="/ui/webhooks/{{ subscription.subscription_id }}/deliveries/{{ row.delivery_id }}/redeliver">
+          <button type="submit" class="secondary">{{ t('webhook.redeliver') }}</button>
+        </form>{% endif %}</td>
   </tr>
   {% endfor %}
 </table>
+<p class="hint">{{ t('webhook.redeliver_hint') }}</p>
 {% else %}
 <p class="empty">{{ t('webhook.no_deliveries') }}</p>
 {% endif %}

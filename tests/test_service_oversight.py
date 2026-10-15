@@ -250,6 +250,12 @@ PARAMETERS = {
     # exception to the rule.
     "scope": "subject",
     "value": OLIVE,
+    # A delivery that does not exist: the scope guard refuses before the
+    # route looks it up, which is what is under test.
+    "delivery_id": "whd_0000",
+    # Deciding a suspected return. A real decision, so the refusal is the
+    # guard's and not a 404 on an unknown one.
+    "decision": "confirm",
 }
 
 #: Filled from the fixture, because they are minted by the service.
@@ -626,7 +632,7 @@ def test_the_migration_promotes_nobody(sqlite_url):
     from painfree.config import load_settings
 
     engine = db.build_engine(load_settings(database_url=sqlite_url))
-    assert db.migrate(engine) == "0020_schedule_cron"
+    assert db.migrate(engine) == "0022_suspected_returns"
     with engine.connect() as connection:
         assert connection.execute(select(oversight_grant)).all() == []
     engine.dispose()

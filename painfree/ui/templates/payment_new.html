@@ -21,6 +21,13 @@
 </div>
 {% endif %}
 
+{% if copied is defined and copied %}
+<div class="card warn">
+  <strong>{{ t('payment_new.copied', order=copied.order_id) }}</strong>
+  <p>{{ t('payment_new.copied_body') }}</p>
+</div>
+{% endif %}
+
 {% if not connection.initialised %}
 <div class="card warn">
   <strong>{{ t('payment_new.not_initialised') }}</strong>

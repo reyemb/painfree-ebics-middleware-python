@@ -203,6 +203,8 @@ PER_CONNECTION: tuple[tuple[str, str, object], ...] = (
     ("GET", "/ui/orders/ord_{cid}/refused-request.xml", None),
     ("GET", "/ui/orders/ord_{cid}/replay", None),
     ("POST", "/ui/orders/ord_{cid}/replay", "form"),
+    ("POST", "/ui/orders/ord_{cid}/resend-events", None),
+    ("POST", "/ui/orders/ord_{cid}/return/confirm", None),
     ("GET", "/ui/statements/stm_{cid}", None),
     ("GET", "/ui/schedules/{schedule}", None),
     ("POST", "/ui/schedules/{schedule}/edit", "form"),
@@ -210,6 +212,7 @@ PER_CONNECTION: tuple[tuple[str, str, object], ...] = (
     ("GET", "/ui/webhooks/{webhook}", None),
     ("POST", "/ui/webhooks/{webhook}/edit", "form"),
     ("POST", "/ui/webhooks/{webhook}/pause", "form"),
+    ("POST", "/ui/webhooks/{webhook}/deliveries/whd_0000/redeliver", None),
 )
 
 #: The path parameters that name something a bank connection owns. A route
@@ -704,7 +707,7 @@ def test_the_migration_gives_every_old_role_a_defined_landing_place(
         before_the_migration):
     """Nobody silently gains, and only the one that cannot be mapped loses."""
     engine = before_the_migration
-    assert db.migrate(engine) == "0020_schedule_cron"
+    assert db.migrate(engine) == "0022_suspected_returns"
     with engine.connect() as connection:
         grants = {}
         for row in connection.execute(select(connection_grant)).mappings():
@@ -798,7 +801,7 @@ def test_a_deployment_with_no_connections_migrates_to_nothing(sqlite_url):
     from painfree.config import load_settings
 
     engine = db.build_engine(load_settings(database_url=sqlite_url))
-    assert db.migrate(engine) == "0020_schedule_cron"
+    assert db.migrate(engine) == "0022_suspected_returns"
     with engine.connect() as connection:
         assert connection.execute(select(connection_grant)).all() == []
     engine.dispose()

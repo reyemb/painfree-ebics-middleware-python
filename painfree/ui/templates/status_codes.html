@@ -7,6 +7,9 @@
 <div class="card">
 <p>{{ t('status_codes.levels') }}</p>
 <p>{{ t('status_codes.terminal') }}</p>
+{# What `acknowledged` does not promise. The question that cost issue #1 an
+   investigation. #}
+<p><strong>{{ t('status_codes.acknowledged_note') }}</strong> {{ t('status_codes.returned_note') }}</p>
 </div>
 
 <div class="card">

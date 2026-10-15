@@ -81,7 +81,7 @@ PLACEHOLDER = re.compile(r"\{([a-z_]+)\}")
 DYNAMIC_PREFIXES = ("state.", "key_state.", "status_code.", "bank_keys.role_",
                     "schedule_new.", "alerts.", "audit.target.", "cadence.",
                     "unit.", "scheme.", "scheme_state.", "scheme_reason.",
-                    "letter.convention_")
+                    "letter.convention_", "return_matched.")
 
 LOCALES = pathlib.Path(rendering.TEMPLATES).parent / "locales"
 
@@ -425,6 +425,10 @@ def test_the_keys_built_by_concatenation_cover_the_model():
     for reason in (REQUESTED, CONNECTION_DEFAULT, PREFLIGHT_NO_INSTANT,
                    PREFLIGHT_CEILING, BANK_REFUSED_INSTANT):
         assert f"scheme_reason.{reason}" in english, reason
+    # How a returning booking was tied to its order.
+    from painfree.returns import MATCHED_BY
+    for matched_by in MATCHED_BY:
+        assert f"return_matched.{matched_by}" in english, matched_by
 
 
 def test_every_alert_names_keys_the_catalogue_has():

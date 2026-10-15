@@ -38,6 +38,14 @@ so a second report -- banks re-send -- affects no row, writes no audit event
 and owes no webhook. A report for an order that is already terminal, or that a
 worker currently holds, is recorded and logged rather than applied.
 
+**One exception: a later refusal of a checked-only acknowledgement.** An
+`ACCP` says the file passed the bank's checks, not that the money moved, and a
+bank that refuses afterwards has refused the payment. So an `acknowledged`
+order whose acknowledgement is in :data:`REVOCABLE` moves to `rejected` when a
+`RJCT` or `CANC` arrives that the bank wrote *after* it -- by `CreDtTm`, so a
+re-downloaded older report cannot overturn a newer one. The same conditional
+``UPDATE`` keeps it idempotent: once `rejected`, nothing moves it again.
+
 **A report for an unknown `MsgId` is stored, logged and audited.** Another
 system's order, or one predating this deployment. It is not an error and it is
 not silence: the statement row is kept with no order on it, the log line says
@@ -55,7 +63,7 @@ from sqlalchemy import Engine, select
 from painfree.audit import FAILURE, SUCCESS, AuditLog
 from painfree.isoxml import datetime_utc
 from painfree.logging import bind, get_logger
-from painfree.orders import OrderState
+from painfree.orders import OrderState, scheme_fields
 from painfree.schema import payment_attempt, payment_order, statement
 
 log = get_logger("painfree.reconcile")
@@ -150,6 +158,15 @@ STATUS_CODES: dict[str, StatusCode] = {
 #: overwrite whatever were written here. The report is recorded against the
 #: order regardless, so nothing is lost -- see :meth:`StatusReconciler.reconcile`.
 RECONCILES_FROM = (OrderState.ACCEPTED.value, OrderState.SUBMITTED.value)
+
+#: The acknowledgements a later refusal may still overturn. Each one says the
+#: bank *checked* the file and nothing about money having moved, so a `RJCT`
+#: or `CANC` after it is the bank changing its mind before settlement and the
+#: payment was not executed. Everything else stays where it is: from `ACSP` on
+#: the money is under way, and `PART` / `PATC` mean part of the batch was taken,
+#: where `rejected` -- replayable -- would re-send what the bank already paid.
+#: A refusal after those is recorded as ignored, exactly as before.
+REVOCABLE = frozenset({"ACTC", "ACCP", "ACFC"})
 
 #: `status_reason_text` is a diagnostic in one column, not a document.
 MAX_REASON_LENGTH = 1024
@@ -554,29 +571,72 @@ class StatusReconciler:
                 return self._undecided(connection_id, order_id, outcome, detail)
             return self._apply(connection_id, order_id, outcome, detail, payload)
 
+    def replay(self, *, connection_id: str, statement_id: str,
+               order_id: str | None, payload: dict[str, Any]) -> bool:
+        """Apply a report that was stored earlier, under today's rules.
+
+        For a rule that changed after the report arrived: ingestion is the only
+        moment a report is read, so a report the old rules ignored would stay
+        ignored for ever. Only the ending that moves an order writes anything.
+        The other three wrote their row when the report first arrived, and
+        writing them again for every stored report would bury the audit log in
+        rows that say nothing new. The event says ``rereconciled``, so a
+        consumer can tell a late transition from a fresh report.
+        """
+        outcome = resolve(payload)
+        if order_id is None or not outcome.decides:
+            return False
+        detail = outcome.as_detail(statement_id=statement_id,
+                                   msg_id=original_message_id(payload),
+                                   rereconciled=True)
+        with bind(order_id=order_id, connection_id=connection_id):
+            return self._move(connection_id, order_id, outcome, detail,
+                              payload)
+
     # --- the four endings --------------------------------------------------
 
     def _apply(self, connection_id: str, order_id: str, outcome: StatusOutcome,
                detail: dict[str, Any], payload: dict[str, Any]) -> StatusOutcome:
-        """The conditional ``UPDATE`` that makes a re-sent report a no-op."""
+        if not self._move(connection_id, order_id, outcome, detail, payload):
+            return self._ignored(connection_id, order_id, outcome, detail)
+        return outcome
+
+    def _move(self, connection_id: str, order_id: str, outcome: StatusOutcome,
+              detail: dict[str, Any], payload: dict[str, Any]) -> bool:
+        """The conditional ``UPDATE`` that makes a re-sent report a no-op.
+
+        ``True`` when the order moved, and then the audit row and the event
+        are written; ``False`` when no row matched, and nothing is.
+        """
         state = outcome.state or OrderState.ACKNOWLEDGED
         now = _dt.datetime.now(_dt.timezone.utc)
+        written = reported_at(payload)
+        revoked = self._revocable(order_id, state, written)
+        movable = (payment_order.c.state.in_(RECONCILES_FROM)
+                   if revoked is None else
+                   # `bank_status` in the `WHERE` as well as in the read: the
+                   # acknowledgement this report overturns is the one it read.
+                   (payment_order.c.state == OrderState.ACKNOWLEDGED.value)
+                   & (payment_order.c.bank_status == revoked))
         moved = (
             payment_order.update()
-            .where(payment_order.c.order_id == order_id,
-                   payment_order.c.state.in_(RECONCILES_FROM))
+            .where(payment_order.c.order_id == order_id, movable)
             .values(state=state.value, bank_status=outcome.status,
                     status_reason_code=outcome.reason_code,
                     status_reason_text=outcome.reason_text,
-                    status_reported_at=reported_at(payload),
+                    status_reported_at=written,
                     worker_id=None, claimed_at=None, next_attempt_at=None,
                     updated_at=now)
-            .returning(payment_order.c.idempotency_key)
+            .returning(payment_order.c.idempotency_key,
+                       payment_order.c.requested_scheme,
+                       payment_order.c.scheme, payment_order.c.scheme_reason)
         )
         with self._engine.begin() as connection:
             row = connection.execute(moved).one_or_none()
         if row is None:
-            return self._ignored(connection_id, order_id, outcome, detail)
+            return False
+        if revoked is not None:
+            detail = {**detail, "revokes_status": revoked}
 
         action = ("payment.acknowledged" if state is OrderState.ACKNOWLEDGED
                   else "payment.rejected")
@@ -588,15 +648,38 @@ class StatusReconciler:
                 else FAILURE,
                 order_id=order_id, connection_id=connection_id,
                 idempotency_key=row[0],
-                detail={"order_state": state.value, **detail})
+                detail={"order_state": state.value, **detail,
+                        **scheme_fields(row[1], row[2], row[3])})
             log.info("payment.state_changed", state=state.value,
                      status=outcome.status, status_name=outcome.name,
                      reason_code=outcome.reason_code,
                      reason_text=outcome.reason_text,
                      transactions_accepted=outcome.accepted,
                      transactions_rejected=outcome.rejected,
-                     source="pain.002")
-        return outcome
+                     revokes_status=revoked, source="pain.002")
+        return True
+
+    def _revocable(self, order_id: str, state: OrderState,
+                   written: _dt.datetime | None) -> str | None:
+        """The acknowledgement this refusal overturns, or ``None``.
+
+        Only a refusal, only of an order acknowledged with a status in
+        :data:`REVOCABLE`, and only when both reports carry a `CreDtTm` and
+        this one is the later. A missing date is not a guess at the order.
+        """
+        if state is not OrderState.REJECTED or written is None:
+            return None
+        with self._engine.connect() as connection:
+            row = connection.execute(
+                select(payment_order.c.state, payment_order.c.bank_status,
+                       payment_order.c.status_reported_at)
+                .where(payment_order.c.order_id == order_id)).one_or_none()
+        if (row is None or row.state != OrderState.ACKNOWLEDGED.value
+                or row.bank_status not in REVOCABLE
+                or row.status_reported_at is None
+                or written <= row.status_reported_at):
+            return None
+        return row.bank_status
 
     def _undecided(self, connection_id: str, order_id: str,
                    outcome: StatusOutcome,
@@ -677,7 +760,7 @@ class StatusReconciler:
 
 __all__: Sequence[str] = [
     "ACCEPTS", "GROUP", "MAX_REASON_LENGTH", "PARTIAL", "PAYMENT",
-    "PAYMENT_STATUS", "RECONCILES_FROM", "REFUSES", "STATUS_CODES",
+    "PAYMENT_STATUS", "RECONCILES_FROM", "REFUSES", "REVOCABLE", "STATUS_CODES",
     "TRANSACTION", "UNANSWERED", "UNDECIDED", "Answer", "Block", "Reading",
     "StatusCode", "StatusOutcome", "StatusReconciler", "original_message_id",
     "reading", "reported_at", "resolve",

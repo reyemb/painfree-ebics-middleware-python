@@ -78,6 +78,14 @@ class OrderState(str, enum.Enum):
     refuses at that stage rather than at submission writes ``REJECTED`` from
     the same place, which is why both terminal words have two writers and one
     meaning each.
+
+    ``RETURNED`` is the money having come back after the bank took it: a
+    booking on the account that undoes this order's debit. It is written by
+    :mod:`painfree.returns` from ``ACKNOWLEDGED``, or from ``SUBMITTED`` when
+    the booking arrives before the status report. It is not ``REJECTED``
+    because the money *did* leave and came back as a booking of its own -- an
+    operator reconciling the account has to see two movements, not none. It is
+    not replayable either: a blind replay sends the same wrong creditor again.
     """
 
     ACCEPTED = "accepted"
@@ -86,6 +94,7 @@ class OrderState(str, enum.Enum):
     REJECTED = "rejected"
     ACKNOWLEDGED = "acknowledged"
     FAILED = "failed"
+    RETURNED = "returned"
 
 
 #: The states an operator may re-queue an order from. Defined next to the
@@ -142,6 +151,30 @@ class PaymentOrder:
     #: :mod:`painfree.ebics3.envelope_schema`.
     refused_request: bytes | None = None
     refused_request_errors: list[str] | None = None
+    #: The booking that returned the money, once one has. ``matched_by`` says
+    #: how it was tied to this order.
+    returned_at: _dt.datetime | None = None
+    return_statement_id: str | None = None
+    return_entry_ref: str | None = None
+    return_reason_code: str | None = None
+    return_reason_text: str | None = None
+    return_matched_by: str | None = None
+    #: A booking that looks like a return and that a person has to decide on.
+    #: Open while ``return_suspected_at`` is set and neither the order is
+    #: returned nor the suspicion dismissed.
+    return_suspected_at: _dt.datetime | None = None
+    return_suspected_booked_at: _dt.datetime | None = None
+    return_suspected_statement_id: str | None = None
+    return_suspected_entry_ref: str | None = None
+    return_suspected_text: str | None = None
+    return_suspicion_dismissed_at: _dt.datetime | None = None
+
+    @property
+    def return_suspected(self) -> bool:
+        """Is there a suspected return waiting for somebody to decide it?"""
+        return (self.return_suspected_at is not None
+                and self.return_suspicion_dismissed_at is None
+                and self.state is not OrderState.RETURNED)
 
     @property
     def downgraded(self) -> bool:
@@ -203,6 +236,32 @@ class PaymentOrder:
             body["status_reported_at"] = (
                 self.status_reported_at.isoformat()
                 if self.status_reported_at else None)
+        if self.returned_at:
+            # The booking that brought the money back, by reference: the
+            # stored statement and the bank's own entry reference, never the
+            # counterparty.
+            body["return"] = {
+                "returned_at": self.returned_at.isoformat(),
+                "reason_code": self.return_reason_code,
+                "reason_text": self.return_reason_text,
+                "statement_id": self.return_statement_id,
+                "entry_ref": self.return_entry_ref,
+                "matched_by": self.return_matched_by,
+            }
+        if self.return_suspected_at and self.state is not OrderState.RETURNED:
+            # Raised by a rule, not by the bank, and said that way: a consumer
+            # reads `dismissed_at` to learn a person decided it was not one.
+            body["return_suspected"] = {
+                "suspected_at": self.return_suspected_at.isoformat(),
+                "booked_at": (self.return_suspected_booked_at.isoformat()
+                              if self.return_suspected_booked_at else None),
+                "statement_id": self.return_suspected_statement_id,
+                "entry_ref": self.return_suspected_entry_ref,
+                "text": self.return_suspected_text,
+                "dismissed_at": (self.return_suspicion_dismissed_at.isoformat()
+                                 if self.return_suspicion_dismissed_at
+                                 else None),
+            }
         return body
 
 
@@ -664,6 +723,22 @@ class OrderStore:
                 query.limit(max(1, min(limit, 500)))).mappings().all()
         return [from_row(row) for row in rows]
 
+    def suspected_returns(self, *, connection_ids: Sequence[str] | None = None,
+                          limit: int = 50) -> list[PaymentOrder]:
+        """Orders with a suspected return nobody has decided yet, newest first."""
+        query = (select(payment_order)
+                 .where(payment_order.c.return_suspected_at.is_not(None),
+                        payment_order.c.return_suspicion_dismissed_at.is_(None),
+                        payment_order.c.state != OrderState.RETURNED.value)
+                 .order_by(payment_order.c.return_suspected_at.desc()))
+        if connection_ids is not None:
+            query = query.where(
+                payment_order.c.connection_id.in_(list(connection_ids)))
+        with self._engine.connect() as connection:
+            rows = connection.execute(
+                query.limit(max(1, min(limit, 500)))).mappings().all()
+        return [from_row(row) for row in rows]
+
     def attempts_for(self, order_id: str):
         """Every attempt at this order, oldest first.
 
@@ -747,6 +822,19 @@ def _scheme_detail(decision: SchemeDecision) -> dict[str, Any]:
             "scheme_reason": decision.reason}
 
 
+def scheme_fields(requested: str, scheme: str,
+                  reason: str | None) -> dict[str, Any]:
+    """The same four fields, read back off a stored order.
+
+    For a writer that moves an order it did not accept -- the queue, the
+    reconciler -- and so has the columns rather than the decision.
+    """
+    return {"scheme": scheme, "requested_scheme": requested,
+            "scheme_downgraded": (PaymentScheme(requested).wants_instant
+                                  and scheme == PaymentScheme.NORMAL.value),
+            "scheme_reason": reason}
+
+
 def from_row(row: Any) -> PaymentOrder:
     return PaymentOrder(
         order_id=row["order_id"], connection_id=row["connection_id"],
@@ -772,9 +860,21 @@ def from_row(row: Any) -> PaymentOrder:
         updated_at=row["updated_at"], document=row["document"],
         refused_request=row["refused_request"],
         refused_request_errors=row["refused_request_errors"],
+        returned_at=row["returned_at"],
+        return_statement_id=row["return_statement_id"],
+        return_entry_ref=row["return_entry_ref"],
+        return_reason_code=row["return_reason_code"],
+        return_reason_text=row["return_reason_text"],
+        return_matched_by=row["return_matched_by"],
+        return_suspected_at=row["return_suspected_at"],
+        return_suspected_booked_at=row["return_suspected_booked_at"],
+        return_suspected_statement_id=row["return_suspected_statement_id"],
+        return_suspected_entry_ref=row["return_suspected_entry_ref"],
+        return_suspected_text=row["return_suspected_text"],
+        return_suspicion_dismissed_at=row["return_suspicion_dismissed_at"],
     )
 
 
 __all__ = ["IDEMPOTENCY_KEY", "ORDER_ID_PREFIX", "REPLAYABLE", "OrderState",
            "OrderStore", "PaymentOrder", "PaymentScheme", "Submission",
-           "fingerprint", "from_row"]
+           "fingerprint", "from_row", "scheme_fields"]

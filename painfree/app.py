@@ -107,6 +107,7 @@ from painfree.orders import OrderStore
 from painfree.schedule import DownloadSchedules
 from painfree.statements import StatementStore
 from painfree.tokens import ProviderUnavailable
+from painfree.redelivery import Redelivery
 from painfree.webhooks import WebhookSubscriptions
 
 log = get_logger("painfree.app")
@@ -169,6 +170,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # show it to the registering caller once -- and cannot open a stored one,
     # here or anywhere else in this process.
     app.state.webhooks = WebhookSubscriptions(engine)
+    app.state.redelivery = Redelivery(engine, app.state.webhooks)
     # Download schedules. Registering, editing and asking for a run are all row
     # writes; the download itself needs the connection's `E002` private half and
     # therefore happens in the worker, which is why "run now" makes a schedule

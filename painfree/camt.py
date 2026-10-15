@@ -301,6 +301,35 @@ def _transaction(node: etree._Element, entry_indicator: str | None) -> dict[str,
         },
         "remittance_information": joined(kids(remittance, "Ustrd")),
         "additional_information": text(node, "AddtlTxInf"),
+        "return_information": _return(kid(node, "RtrInf")),
+    }
+
+
+def _return(node: etree._Element | None) -> dict[str, Any] | None:
+    """`RtrInf`: the bank saying this booking returns an earlier payment.
+
+    ``None`` when the transaction carries none, which is almost always. When it
+    does, it is the strongest evidence a statement has that money came back,
+    and the reason code (`AC01`, `AC04`, `BE04`, `MD07`, ...) is what an
+    operator acts on.
+    """
+    if node is None:
+        return None
+    reason = kid(node, "Rsn")
+    original = path(node, "OrgnlBkTxCd", "Domn")
+    return {
+        "reason_code": text(reason, "Cd"),
+        "reason_proprietary": text(reason, "Prtry"),
+        "additional_information": [value for value in
+                                   (child.text.strip() for child in
+                                    kids(node, "AddtlInf") if child.text)
+                                   if value],
+        "originator": text(kid(node, "Orgtr"), "Nm"),
+        "original_bank_transaction_code": {
+            "domain": text(original, "Cd"),
+            "family": text(path(original, "Fmly"), "Cd"),
+            "sub_family": text(path(original, "Fmly"), "SubFmlyCd"),
+        } if original is not None else None,
     }
 
 

@@ -234,6 +234,29 @@
 {% endif %}
 </div>
 
+{# Applying today's rules to what is already stored. A schedule manager's,
+   because it moves orders and sends events the way a re-fetch does. #}
+{% if may('schedules:manage') %}
+<h2>{{ t('reconcile.heading') }}</h2>
+{% if examined is not none %}
+<p class="notice">{{ t('reconcile.done', examined=examined, moved=moved or 0) }}</p>
+{% endif %}
+<form class="stack card" method="post" action="/ui/statements/reconcile">
+  <p>{{ t('reconcile.body') }}</p>
+  <p><strong>{{ t('reconcile.safe') }}</strong> {{ t('reconcile.safe_why') }}</p>
+  <label for="reconcile_connection">{{ t('common.connection') }}</label>
+  <select id="reconcile_connection" name="connection_id" required>
+    {% for row in connections if may_on('schedules:manage', row.connection_id) %}
+    <option value="{{ row.connection_id }}" {{ 'selected' if row.connection_id == selected_connection else '' }}>{{ row.connection_id }}</option>
+    {% endfor %}
+  </select>
+  <label for="reconcile_since">{{ t('reconcile.since') }}
+    <span class="hint">{{ t('reconcile.since_hint') }}</span></label>
+  <input type="date" id="reconcile_since" name="since" class="mono" max="{{ today }}">
+  <div class="actions"><button type="submit">{{ t('reconcile.button') }}</button></div>
+</form>
+{% endif %}
+
 {% else %}
 {# ---- the documents: an account and its balances, one row per statement.
    No entries here on purpose; they are on the statement and on the account

@@ -148,7 +148,7 @@ table.plain td:first-child {
   background: var(--pf-warning-container);
   color: var(--pf-on-warning-container);
 }
-.tag.rejected, .tag.failed, .tag.parked, .tag.run-refused, .tag.run-failed,
+.tag.rejected, .tag.failed, .tag.returned, .tag.parked, .tag.run-refused, .tag.run-failed,
 .tag.failure {
   background: var(--pf-error-container);
   color: var(--pf-on-error-container);

@@ -61,7 +61,7 @@ from painfree.attempts import LIVE, PLANNED, SUPERSEDED, Attempt, AttemptStore
 from painfree.ebics3 import envelope_schema
 from painfree.audit import FAILURE, SUCCESS, AuditLog
 from painfree.logging import bind, get_logger
-from painfree.orders import OrderState, PaymentOrder, from_row
+from painfree.orders import OrderState, PaymentOrder, from_row, scheme_fields
 from painfree.schema import payment_attempt, payment_order
 from painfree.schemes import (BANK_REFUSED_INSTANT, PaymentScheme,
                               SchemeProfiles)
@@ -530,13 +530,7 @@ class OrderQueue:
                 .where(payment_order.c.order_id == order_id)).one_or_none()
         if row is None:
             return None, None, {}
-        return row[0], row[1], {
-            "scheme": row[3],
-            "requested_scheme": row[2],
-            "scheme_downgraded": (PaymentScheme(row[2]).wants_instant
-                                  and row[3] == PaymentScheme.NORMAL.value),
-            "scheme_reason": row[4],
-        }
+        return row[0], row[1], scheme_fields(row[2], row[3], row[4])
 
 
 def _short(reason: str) -> str:

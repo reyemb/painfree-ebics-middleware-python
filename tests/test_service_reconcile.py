@@ -353,6 +353,83 @@ def test_a_later_report_about_a_terminal_order_neither_resurrects_nor_repeats(
                for record in caplog.records)
 
 
+def test_a_later_refusal_overturns_an_acknowledgement_that_only_checked(bank):
+    """`ACCP` is the file passing checks; a `RJCT` after it means no payment.
+
+    Seen in production as the gap issue #1 names: the acknowledgement stood
+    and the bank's later word was dropped.
+    """
+    engine, store, order = bank
+    ingest(store, payment_status(order.msg_id, report_id="STSRPT-0001",
+                                 group_status="ACCP"))
+    ingest(store, payment_status(
+        order.msg_id, report_id="STSRPT-0002", group_status="RJCT",
+        reason_code="AC01", reason_text="Creditor account number invalid",
+        created_at="2026-08-30T08:00:00Z"))
+
+    fresh = OrderStore(engine).get(order.order_id)
+    assert fresh.state is OrderState.REJECTED
+    assert (fresh.bank_status, fresh.status_reason_code) == ("RJCT", "AC01")
+    trail = actions(engine, order.order_id)
+    assert trail.count("payment.acknowledged") == 1
+    assert trail.count("payment.rejected") == 1
+    detail = _detail(engine, order.order_id, "payment.rejected")
+    assert detail["revokes_status"] == "ACCP"
+    assert detail["order_state"] == "rejected"
+
+
+def test_a_status_report_event_carries_the_scheme_like_every_order_event(bank):
+    """`docs/webhooks.md` promises the scheme on all `order.*` events."""
+    engine, store, order = bank
+    ingest(store, payment_status(order.msg_id, group_status="ACSC"))
+
+    detail = _detail(engine, order.order_id, "payment.acknowledged")
+    assert detail["scheme"] == order.scheme.value
+    assert detail["requested_scheme"] == order.requested_scheme.value
+    assert detail["scheme_downgraded"] is False
+
+
+def test_an_older_refusal_does_not_overturn_a_newer_acknowledgement(bank):
+    """A re-downloaded report the bank wrote first is history, not news."""
+    engine, store, order = bank
+    ingest(store, payment_status(order.msg_id, report_id="STSRPT-0002",
+                                 group_status="ACCP",
+                                 created_at="2026-08-30T08:00:00Z"))
+    ingest(store, payment_status(order.msg_id, report_id="STSRPT-0001",
+                                 group_status="RJCT",
+                                 created_at="2026-08-29T08:00:00Z"))
+
+    assert state_of(engine, order.order_id) == "acknowledged"
+    assert "payment.status_ignored" in actions(engine, order.order_id)
+
+
+def test_a_later_refusal_does_not_make_a_partial_acceptance_replayable(bank):
+    """`PART` was partly paid; `rejected` would re-send the paid part."""
+    engine, store, order = bank
+    ingest(store, payment_status(order.msg_id, report_id="STSRPT-0001",
+                                 group_status="PART"))
+    ingest(store, payment_status(order.msg_id, report_id="STSRPT-0002",
+                                 group_status="RJCT",
+                                 created_at="2026-08-30T08:00:00Z"))
+
+    assert state_of(engine, order.order_id) == "acknowledged"
+    assert "payment.rejected" not in actions(engine, order.order_id)
+
+
+def test_a_late_refusal_moves_the_order_once(bank):
+    engine, store, order = bank
+    ingest(store, payment_status(order.msg_id, report_id="STSRPT-0001",
+                                 group_status="ACTC"))
+    for report_id in ("STSRPT-0002", "STSRPT-0003"):
+        ingest(store, payment_status(order.msg_id, report_id=report_id,
+                                     group_status="RJCT",
+                                     created_at="2026-08-30T08:00:00Z"))
+
+    trail = actions(engine, order.order_id)
+    assert trail.count("payment.rejected") == 1
+    assert trail.count("payment.status_ignored") == 1
+
+
 def test_an_interim_report_leaves_the_order_and_a_later_one_decides_it(bank):
     """`PDNG` today, `ACSC` tomorrow. Two documents, one transition, in order."""
     engine, store, order = bank

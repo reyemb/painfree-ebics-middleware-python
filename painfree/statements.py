@@ -54,16 +54,17 @@ import zipfile
 from dataclasses import dataclass, field
 from typing import Any, Sequence
 
-from sqlalchemy import Engine, func, select
+from sqlalchemy import Engine, func, or_, select
 from sqlalchemy.exc import IntegrityError
 
-from painfree.audit import AuditLog
+from painfree.audit import SYSTEM_ACTOR, Actor, AuditLog
 from painfree.camt import CONTAINERS, normalise_camt
 from painfree.isoxml import DocumentUnreadable, iso_document, local, message_type_of
 from painfree.logging import bind, get_logger
 from painfree.pain002 import CONTAINER as PAIN002_CONTAINER
 from painfree.pain002 import normalise_pain002
 from painfree.reconcile import PAYMENT_STATUS, StatusReconciler, resolve
+from painfree.returns import ReturnMatcher
 from painfree.schema import statement
 
 log = get_logger("painfree.statements")
@@ -105,6 +106,14 @@ ZIP_MAGIC = b"PK\x03\x04"
 #: archive is a refusal rather than a filled disk.
 MAX_MEMBERS = 1000
 MAX_MEMBER_BYTES = 64 * 1024 * 1024
+
+
+@dataclass(frozen=True, slots=True)
+class Rereconciled:
+    """What re-reading the stored reports did: how many, and which orders moved."""
+
+    examined: int = 0
+    moved: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,12 +212,18 @@ class StatementStore:
     re-served file needs.
     """
 
-    __slots__ = ("_engine", "_audit", "_reconciler")
+    __slots__ = ("_engine", "_audit", "_reconciler", "_returns")
 
     def __init__(self, engine: Engine, audit: AuditLog | None = None) -> None:
         self._engine = engine
         self._audit = audit or AuditLog(engine)
         self._reconciler = StatusReconciler(engine, self._audit)
+        self._returns = ReturnMatcher(engine, self._audit)
+
+    @property
+    def returns(self) -> ReturnMatcher:
+        """The return matcher, so the console can confirm or dismiss a suspicion."""
+        return self._returns
 
     @property
     def reconciler(self) -> StatusReconciler:
@@ -242,6 +257,68 @@ class StatementStore:
                     stored.append(statement_id)
         return IngestResult(stored=len(stored), duplicates=duplicates,
                             unreadable=unreadable, statement_ids=stored)
+
+    def reconcile_stored(self, *, connection_id: str | None = None,
+                         since: _dt.date | None = None,
+                         actor: Actor = SYSTEM_ACTOR) -> Rereconciled:
+        """Read every stored status report and statement again, under today's rules.
+
+        Ingestion is the only time a report is otherwise read, so a rule that
+        changed after a report arrived never reaches it, and neither does the
+        event the new rule would have written. This is how it does. Reports go
+        in the order the bank wrote them (`CreDtTm`, then arrival), because the
+        rules compare one report with the one before it. The conditional
+        ``UPDATE`` that makes a re-sent report harmless makes this harmless
+        too: an order already where the rules put it does not move, and owes no
+        event.
+
+        ``since`` is read against the report's own date and keeps a run to a
+        window an operator can reason about.
+        """
+        # A report with no readable date falls back to its arrival, the same
+        # on both backends -- they disagree about where a NULL sorts.
+        written = func.coalesce(statement.c.created_at, statement.c.ingested_at)
+        # Status reports that name an order, and every account document --
+        # one ordered stream, because a refusal and a return of the same order
+        # are read against what came before them.
+        query = (select(statement.c.statement_id, statement.c.connection_id,
+                        statement.c.order_id, statement.c.message_type,
+                        statement.c.payload)
+                 .where(or_(statement.c.message_type.like(FAMILIES[RESPONSES])
+                            & statement.c.order_id.is_not(None),
+                            statement.c.message_type.like(FAMILIES[ACCOUNTS])))
+                 .order_by(written, statement.c.seq))
+        if connection_id:
+            query = query.where(statement.c.connection_id == connection_id)
+        if since is not None:
+            query = query.where(written >= _dt.datetime.combine(
+                                    since, _dt.time(), _dt.timezone.utc))
+        with self._engine.connect() as connection:
+            rows = connection.execute(query).mappings().all()
+        moved: list[str] = []
+        for row in rows:
+            payload = row["payload"] or {}
+            if row["message_type"].startswith("camt."):
+                moved += self._returns.match(
+                    connection_id=row["connection_id"],
+                    statement_id=row["statement_id"], payload=payload,
+                    replay=True)
+            elif self._reconciler.replay(
+                    connection_id=row["connection_id"],
+                    statement_id=row["statement_id"],
+                    order_id=row["order_id"], payload=payload):
+                moved.append(row["order_id"])
+        result = Rereconciled(examined=len(rows), moved=tuple(moved))
+        self._audit.record(
+            "statement.reconciled_again", actor=actor,
+            connection_id=connection_id,
+            detail={"since": since.isoformat() if since else None,
+                    "examined": result.examined, "moved": len(result.moved),
+                    "order_ids": list(result.moved)})
+        log.info("statement.reconciled_again", connection_id=connection_id,
+                 since=since.isoformat() if since else None,
+                 examined=result.examined, moved=len(result.moved))
+        return result
 
     def get(self, statement_id: str) -> dict[str, Any] | None:
         with self._engine.connect() as connection:
@@ -503,7 +580,26 @@ class StatementStore:
         if normalised.kind == PAYMENT_STATUS:
             self._reconcile(connection_id, statement_id, order_id,
                             normalised.payload, run_id)
+        else:
+            self._match_returns(connection_id, statement_id,
+                                normalised.payload, run_id)
         return statement_id
+
+    def _match_returns(self, connection_id: str, statement_id: str,
+                       payload: dict[str, Any], run_id: str | None) -> None:
+        """Close any order whose money this statement books back.
+
+        Guarded the way :meth:`_reconcile` is, for the same reason: the
+        statement is committed, and one failure must not cost the rest of the
+        download.
+        """
+        try:
+            self._returns.match(connection_id=connection_id,
+                                statement_id=statement_id, payload=payload)
+        except Exception:
+            log.exception("payment.return_match_failed",
+                          statement_id=statement_id,
+                          connection_id=connection_id, run_id=run_id)
 
     def _reconcile(self, connection_id: str, statement_id: str,
                    order_id: str | None, payload: dict[str, Any],
@@ -548,4 +644,4 @@ class StatementStore:
 
 
 __all__ = ["IngestResult", "MAX_MEMBERS", "MAX_MEMBER_BYTES", "STATEMENT_ID_PREFIX",
-           "StatementStore", "ZIP_MAGIC", "document_key", "normalise", "unpack"]
+           "Rereconciled", "StatementStore", "ZIP_MAGIC", "document_key", "normalise", "unpack"]

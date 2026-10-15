@@ -328,6 +328,26 @@ payment_order = Table(
     Column("status_reason_text", String(1024), nullable=True),
     # When the *bank* wrote the report, not when this service read it.
     Column("status_reported_at", UtcDateTime, nullable=True),
+    # The money came back. Which booking said so -- the stored statement and
+    # the entry's bank reference -- the bank's return reason, and how the
+    # booking was tied to this order: `rtrinf`, `reversal`, or `operator` when
+    # a person confirmed a suspected return.
+    Column("returned_at", UtcDateTime, nullable=True),
+    Column("return_statement_id", String(36), nullable=True),
+    Column("return_entry_ref", String(128), nullable=True),
+    Column("return_reason_code", String(35), nullable=True),
+    Column("return_reason_text", String(1024), nullable=True),
+    Column("return_matched_by", String(16), nullable=True),
+    # A booking that *looks* like this order's money coming back and that the
+    # bank did not mark as a return. Raised by a rule, decided by a person:
+    # confirming writes `returned` above, dismissing fills
+    # `return_suspicion_dismissed_at`.
+    Column("return_suspected_at", UtcDateTime, nullable=True),
+    Column("return_suspected_booked_at", UtcDateTime, nullable=True),
+    Column("return_suspected_statement_id", String(36), nullable=True),
+    Column("return_suspected_entry_ref", String(128), nullable=True),
+    Column("return_suspected_text", String(1024), nullable=True),
+    Column("return_suspicion_dismissed_at", UtcDateTime, nullable=True),
     # The payment scheme. `requested_scheme` is what the caller asked for and
     # never changes; `scheme` is what the **live attempt** is actually sending,
     # so the two differing is exactly the fact an operator has to be able to

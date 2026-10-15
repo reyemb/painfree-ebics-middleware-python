@@ -22,6 +22,12 @@ withdrawn is simply not found.
 index of documents shows none, deliberately; this page shows the entries of
 the single account the reader chose, which is the same exposure as opening
 each of its statements in turn and is exactly what it saves them doing.
+
+**The responses tab can re-read what is stored.** After an upgrade that changed
+what a report means, the reports already held keep the reading they were given
+when they arrived. The control under the list applies the rules in force now;
+it is a schedule manager's, because the effect is the one a re-fetched window
+has -- documents read again, orders moved, events sent.
 """
 
 from __future__ import annotations
@@ -33,11 +39,12 @@ from fastapi import APIRouter, Depends, Request
 
 from painfree import access, reconcile
 from painfree.authn import requires
+from painfree.errors import ConflictError
 from painfree.identity import Principal, Scope
 from painfree.statements import ACCOUNTS, INTRADAY, RESPONSES
 from painfree.ui import ledger
 from painfree.ui.rendering import render
-from painfree.ui.views import PREFIX, _orders, _registry
+from painfree.ui.views import PREFIX, _orders, _registry, _see, form_data
 
 router = APIRouter(prefix=PREFIX, tags=["console"], include_in_schema=False)
 
@@ -63,6 +70,7 @@ DEFAULT_PERIOD = 30
 def statements(request: Request, connection_id: str = "", iban: str = "",
                family: str = ACCOUNT, message_type: str = "",
                period: str = "", show: str = "all",
+               examined: int | None = None, moved: int | None = None,
                principal: Principal = Depends(requires(Scope.statements_read))):
     """The account overview, or one of the two document lists behind it."""
     store = request.app.state.statements
@@ -82,7 +90,9 @@ def statements(request: Request, connection_id: str = "", iban: str = "",
         rows = store.responses(connection_ids=allowed,
                                message_type=message_type or None,
                                limit=100) if possible else []
-        return render(request, "statements.html", statements=rows, **common)
+        return render(request, "statements.html", statements=rows,
+                      examined=examined, moved=moved, today=_now().date(),
+                      **common)
     if family == DOCUMENTS:
         rows = store.recent(connection_ids=allowed, family=ACCOUNTS,
                             message_type=message_type or None,
@@ -138,6 +148,32 @@ def statements(request: Request, connection_id: str = "", iban: str = "",
             COOKIE, f"{chosen['connection_id']}|{chosen['iban']}",
             max_age=COOKIE_MAX_AGE, httponly=True, samesite="lax", path="/")
     return response
+
+
+@router.post("/statements/reconcile")
+def reconcile_stored(
+    request: Request,
+    principal: Principal = Depends(requires(Scope.schedules_manage)),
+    form: dict[str, str] = Depends(form_data),
+):
+    """Re-read one connection's stored status reports under today's rules."""
+    connection_id = (form.get("connection_id") or "").strip()
+    if not connection_id:
+        raise ConflictError("choose the connection whose reports to re-read")
+    access.require(principal, connection_id, Scope.schedules_manage,
+                   what="connection")
+    since = None
+    if (form.get("since") or "").strip():
+        try:
+            since = _dt.date.fromisoformat(form["since"].strip())
+        except ValueError:
+            raise ConflictError(
+                f"{form['since']!r} is not a date; use YYYY-MM-DD") from None
+    result = request.app.state.statements.reconcile_stored(
+        connection_id=connection_id, since=since, actor=principal.actor())
+    return _see(f"{PREFIX}/statements?family={RESPONSES}"
+                f"&connection_id={connection_id}"
+                f"&examined={result.examined}&moved={len(result.moved)}")
 
 
 def _choose(accounts: list[dict[str, Any]], connection_id: str, iban: str,

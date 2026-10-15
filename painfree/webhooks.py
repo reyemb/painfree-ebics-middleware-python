@@ -102,6 +102,9 @@ EVENT_TYPES: dict[str, str] = {
     "payment.rejected": "order.rejected",
     "payment.acknowledged": "order.acknowledged",
     "payment.failed": "order.failed",
+    "payment.returned": "order.returned",
+    "payment.return_suspected": "order.return_suspected",
+    "payment.return_dismissed": "order.return_dismissed",
     "statement.available": "statement.available",
 }
 
@@ -793,40 +796,13 @@ def fan_out(connection: Connection, *, event_id: str, action: str,
         return 0
 
     connection_id = ids.get("connection_id")
-    subscriptions = [
-        row for row in connection.execute(
-            select(webhook_subscription.c.subscription_id,
-                   webhook_subscription.c.connection_id,
-                   webhook_subscription.c.event_types)
-            .where(webhook_subscription.c.enabled.is_(True),
-                   webhook_subscription.c.parked_at.is_(None))
-            .order_by(webhook_subscription.c.seq)).mappings()
-        # The event-type filter is applied here rather than in SQL: the two
-        # backends store a JSON array differently enough that a containment
-        # predicate would be two queries, and the enabled set is small.
-        if event_type in (row["event_types"] or ())
-        and (row["connection_id"] is None
-             or row["connection_id"] == connection_id)
-    ]
+    subscriptions = live_subscriptions(connection, event_type, connection_id)
     if not subscriptions:
         return 0
 
-    event = envelope(event_id=event_id, event_type=event_type,
-                     occurred_at=occurred_at, connection_id=connection_id,
-                     order_id=ids.get("order_id"),
-                     idempotency_key=ids.get("idempotency_key"),
-                     data=dict(detail or {}))
-    now = utcnow()
-    rows = [{
-        "delivery_id": DELIVERY_ID_PREFIX + uuid.uuid4().hex,
-        "subscription_id": row["subscription_id"],
-        "event_id": event_id, "event_type": event_type,
-        "connection_id": connection_id, "order_id": ids.get("order_id"),
-        "idempotency_key": ids.get("idempotency_key"),
-        "occurred_at": occurred_at, "payload": event, "state": PENDING,
-        "attempts": 0, "next_attempt_at": now,
-        "created_at": now, "updated_at": now,
-    } for row in subscriptions]
+    rows = delivery_rows(subscriptions, event_id=event_id,
+                         event_type=event_type, occurred_at=occurred_at,
+                         ids=ids, detail=detail)
     try:
         connection.execute(webhook_delivery.insert(), rows)
     except IntegrityError:
@@ -841,6 +817,49 @@ def fan_out(connection: Connection, *, event_id: str, action: str,
              event_type=event_type, connection_id=connection_id,
              subscriptions=len(rows))
     return len(rows)
+
+
+def live_subscriptions(connection: Connection, event_type: str,
+                       connection_id: str | None) -> list[Any]:
+    """Every enabled, unparked subscription that wants this event."""
+    return [
+        row for row in connection.execute(
+            select(webhook_subscription.c.subscription_id,
+                   webhook_subscription.c.connection_id,
+                   webhook_subscription.c.event_types)
+            .where(webhook_subscription.c.enabled.is_(True),
+                   webhook_subscription.c.parked_at.is_(None))
+            .order_by(webhook_subscription.c.seq)).mappings()
+        # The event-type filter is applied here rather than in SQL: the two
+        # backends store a JSON array differently enough that a containment
+        # predicate would be two queries, and the enabled set is small.
+        if event_type in (row["event_types"] or ())
+        and (row["connection_id"] is None
+             or row["connection_id"] == connection_id)
+    ]
+
+
+def delivery_rows(subscriptions: list[Any], *, event_id: str, event_type: str,
+                  occurred_at: _dt.datetime, ids: dict[str, Any],
+                  detail: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """One queued delivery per subscription, all carrying the same envelope."""
+    connection_id = ids.get("connection_id")
+    event = envelope(event_id=event_id, event_type=event_type,
+                     occurred_at=occurred_at, connection_id=connection_id,
+                     order_id=ids.get("order_id"),
+                     idempotency_key=ids.get("idempotency_key"),
+                     data=dict(detail or {}))
+    now = utcnow()
+    return [{
+        "delivery_id": DELIVERY_ID_PREFIX + uuid.uuid4().hex,
+        "subscription_id": row["subscription_id"],
+        "event_id": event_id, "event_type": event_type,
+        "connection_id": connection_id, "order_id": ids.get("order_id"),
+        "idempotency_key": ids.get("idempotency_key"),
+        "occurred_at": occurred_at, "payload": event, "state": PENDING,
+        "attempts": 0, "next_attempt_at": now,
+        "created_at": now, "updated_at": now,
+    } for row in subscriptions]
 
 
 def pending_count(engine: Engine, subscription_id: str | None = None) -> int:
@@ -960,7 +979,8 @@ __all__: Sequence[str] = [
     "MIN_SECRET_LENGTH", "PARKED", "PENDING", "PING_EVENT_TYPE",
     "SIGNATURE_HEADER", "SIGNATURE_SCHEME", "SUBSCRIPTION_ID_PREFIX",
     "TIMESTAMP_HEADER", "Delivery", "Replayed", "Subscription",
-    "WebhookSubscriptions", "canonical_body", "delivery_headers", "envelope",
-    "fan_out", "new_webhook_secret", "pending_count", "short", "sign",
+    "WebhookSubscriptions", "canonical_body", "delivery_headers",
+    "delivery_rows", "envelope", "fan_out", "live_subscriptions",
+    "new_webhook_secret", "pending_count", "short", "sign",
     "sign_all", "utcnow",
 ]

@@ -1,6 +1,6 @@
 """What the app bar's bell counts, and why each entry is a thing to act on.
 
-Five conditions, one row each. They were not invented for the bell: each is a
+Six conditions, one row each. They were not invented for the bell: each is a
 state some page in this console already leads with, and the bell is the answer
 to *which page should I be on*, asked from whichever page an operator happens to
 have open.
@@ -9,6 +9,7 @@ have open.
 A parked webhook endpoint    delivery has stopped; events are piling up
 A failing schedule           the bank was not reached; the window is stuck
 A failed order               this service could not get a payment there
+A suspected return            money may have come back; a person decides
 A connection not initialised registered, and it cannot submit anything yet
 An unfinished key job         the worker has been asked for a key operation
 ===========================  ============================================
@@ -153,6 +154,21 @@ def _gather(request: Any, principal: Principal):
                 values={"count": count,
                         "shown": f"{count}+" if count >= CAP else str(count)},
                 href="/ui/orders?state=failed", tone="bad")
+
+    if principal.has(Scope.payments_read) and possible:
+        # A booking that looks like a return and that a person has to decide.
+        # Straight to the order, the way an unfinished key job goes straight to
+        # its connection.
+        rows = state.orders.suspected_returns(connection_ids=allowed, limit=CAP)
+        if rows:
+            count = len(rows)
+            yield Alert(
+                key="returns_suspected", count=count, capped=count >= CAP,
+                title_key="alerts.returns_suspected.title",
+                why_key="alerts.returns_suspected.why",
+                values={"count": count,
+                        "shown": f"{count}+" if count >= CAP else str(count)},
+                href=f"/ui/orders/{rows[0].order_id}", tone="bad")
 
     if principal.has(Scope.connections_read) and possible:
         rows = state.connections.all(allowed)
